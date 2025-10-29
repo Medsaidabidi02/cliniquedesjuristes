@@ -50,13 +50,28 @@ export interface BlogPost {
   updated_at: string;
 }
 
+export interface Subject {
+  id: number;
+  title: string;
+  course_id: number;
+  professor_name?: string;
+  hours?: number;
+  description?: string;
+  is_active: boolean;
+  order_index?: number;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface UserCourse {
   id: number;
   user_id: number;
   course_id: number;
+  subject_id?: number | null; // Optional: if null, user has access to entire course
   assigned_at: string;
   expires_at?: string;
   is_active: boolean;
+  created_at?: string;
 }
 
 export interface ApiResponse<T = any> {
