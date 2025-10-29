@@ -1,7 +1,7 @@
 /**
  * One-Tab Policy Implementation
- * Ensures only one browser tab can be logged in at a time
- * Uses localStorage events to detect and enforce single-tab access
+ * Shows a message when multiple tabs are open instead of logging out
+ * Uses localStorage events to detect multiple tabs
  */
 
 const TAB_ID_KEY = 'activeTabId';
@@ -11,22 +11,22 @@ const HEARTBEAT_TIMEOUT = 5000; // 5 seconds
 
 let currentTabId: string | null = null;
 let heartbeatInterval: NodeJS.Timeout | null = null;
-let logoutCallback: (() => void) | null = null;
+let isActiveTab: boolean = true;
+let overlayElement: HTMLDivElement | null = null;
 
 /**
  * Initialize one-tab policy for the current tab
- * @param onLogout Callback function to execute when another tab takes over
+ * @param onInactive Callback function to execute when tab becomes inactive (optional, not used for logout anymore)
  */
-export function initOneTabPolicy(onLogout: () => void): void {
+export function initOneTabPolicy(onInactive?: () => void): void {
   if (typeof window === 'undefined') return;
 
-  logoutCallback = onLogout;
   currentTabId = generateTabId();
   
   console.log(`🔒 One-tab policy initialized for tab ${currentTabId.substring(0, 8)}`);
 
-  // Claim this tab as the active one
-  claimActiveTab();
+  // Check if another tab is already active
+  checkAndClaimActiveTab();
 
   // Start heartbeat to maintain active status
   startHeartbeat();
@@ -60,19 +60,36 @@ function generateTabId(): string {
 }
 
 /**
- * Claim this tab as the active tab
+ * Check if another tab is active and claim if not
  */
-function claimActiveTab(): void {
+function checkAndClaimActiveTab(): void {
   if (!currentTabId) return;
 
-  const previousTabId = localStorage.getItem(TAB_ID_KEY);
+  const existingTabId = localStorage.getItem(TAB_ID_KEY);
+  const existingHeartbeat = localStorage.getItem(HEARTBEAT_KEY);
   
-  if (previousTabId && previousTabId !== currentTabId) {
-    console.log(`⚠️ Another tab (${previousTabId.substring(0, 8)}) was active. Taking over...`);
+  if (existingTabId && existingTabId !== currentTabId && existingHeartbeat) {
+    try {
+      const heartbeat = JSON.parse(existingHeartbeat);
+      const timeSinceHeartbeat = Date.now() - heartbeat.timestamp;
+      
+      // If another tab is actively sending heartbeats, this tab is inactive
+      if (timeSinceHeartbeat < HEARTBEAT_TIMEOUT) {
+        console.log(`⚠️ Another tab (${existingTabId.substring(0, 8)}) is active. This tab is inactive.`);
+        isActiveTab = false;
+        showInactiveTabOverlay();
+        return;
+      }
+    } catch (e) {
+      console.error('Error parsing heartbeat:', e);
+    }
   }
 
+  // No other active tab, claim this one as active
+  isActiveTab = true;
   localStorage.setItem(TAB_ID_KEY, currentTabId);
   updateHeartbeat();
+  hideInactiveTabOverlay();
 }
 
 /**
@@ -98,12 +115,18 @@ function startHeartbeat(): void {
   }
 
   heartbeatInterval = setInterval(() => {
+    if (!isActiveTab) {
+      // Don't send heartbeat if this tab is not active
+      return;
+    }
+
     // Check if we're still the active tab
     const activeTabId = localStorage.getItem(TAB_ID_KEY);
     
     if (activeTabId !== currentTabId) {
-      console.warn(`⛔ Another tab (${activeTabId?.substring(0, 8)}) is now active. Logging out this tab...`);
-      handleLogout();
+      console.warn(`⚠️ Another tab (${activeTabId?.substring(0, 8)}) is now active. This tab is inactive.`);
+      isActiveTab = false;
+      showInactiveTabOverlay();
       return;
     }
 
@@ -120,8 +143,9 @@ function handleStorageChange(event: StorageEvent): void {
 
   // Another tab claimed to be active
   if (event.key === TAB_ID_KEY && event.newValue && event.newValue !== currentTabId) {
-    console.warn(`⛔ Tab ${event.newValue.substring(0, 8)} claimed active status. Logging out this tab...`);
-    handleLogout();
+    console.warn(`⚠️ Tab ${event.newValue.substring(0, 8)} claimed active status. This tab is now inactive.`);
+    isActiveTab = false;
+    showInactiveTabOverlay();
     return;
   }
 
@@ -134,19 +158,11 @@ function handleStorageChange(event: StorageEvent): void {
         // Another tab is alive and active
         const activeTabId = localStorage.getItem(TAB_ID_KEY);
         
-        if (activeTabId === currentTabId) {
-          // We're marked as active but another tab is sending heartbeats
-          // Check if the other tab's heartbeat is recent
-          const timeSinceHeartbeat = Date.now() - heartbeat.timestamp;
-          
-          if (timeSinceHeartbeat < HEARTBEAT_TIMEOUT) {
-            console.warn(`⛔ Tab ${heartbeat.tabId.substring(0, 8)} is active. Logging out this tab...`);
-            handleLogout();
-          }
-        } else if (activeTabId === heartbeat.tabId) {
+        if (activeTabId === heartbeat.tabId && activeTabId !== currentTabId) {
           // Another tab is correctly marked as active
-          console.warn(`⛔ Tab ${heartbeat.tabId.substring(0, 8)} is the active tab. Logging out this tab...`);
-          handleLogout();
+          console.warn(`⚠️ Tab ${heartbeat.tabId.substring(0, 8)} is the active tab. This tab is inactive.`);
+          isActiveTab = false;
+          showInactiveTabOverlay();
         }
       }
     } catch (error) {
@@ -156,20 +172,71 @@ function handleStorageChange(event: StorageEvent): void {
 }
 
 /**
- * Trigger logout for this tab
+ * Show overlay message when tab is inactive
  */
-function handleLogout(): void {
-  console.log(`👋 One-tab policy triggered logout for tab ${currentTabId?.substring(0, 8)}`);
+function showInactiveTabOverlay(): void {
+  if (typeof window === 'undefined') return;
   
-  // Store message for user (externalized for i18n)
-  const ONE_TAB_LOGOUT_MESSAGE = 'Vous avez été déconnecté car vous avez ouvert une autre session dans un autre onglet.';
-  sessionStorage.setItem('loginMessage', ONE_TAB_LOGOUT_MESSAGE);
-  
-  cleanup();
-  
-  // Call the logout callback
-  if (logoutCallback) {
-    logoutCallback();
+  // Don't create duplicate overlays
+  if (overlayElement) return;
+
+  overlayElement = document.createElement('div');
+  overlayElement.style.cssText = `
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.95);
+    z-index: 999999;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif;
+  `;
+
+  const icon = document.createElement('div');
+  icon.style.cssText = `
+    font-size: 72px;
+    margin-bottom: 24px;
+  `;
+  icon.textContent = '⚠️';
+
+  const message = document.createElement('div');
+  message.style.cssText = `
+    font-size: 28px;
+    font-weight: 600;
+    text-align: center;
+    margin-bottom: 16px;
+  `;
+  message.textContent = 'Another tab is open';
+
+  const subMessage = document.createElement('div');
+  subMessage.style.cssText = `
+    font-size: 18px;
+    text-align: center;
+    color: rgba(255, 255, 255, 0.8);
+  `;
+  subMessage.textContent = 'Please use that tab';
+
+  overlayElement.appendChild(icon);
+  overlayElement.appendChild(message);
+  overlayElement.appendChild(subMessage);
+
+  document.body.appendChild(overlayElement);
+  console.log('🚫 Inactive tab overlay shown');
+}
+
+/**
+ * Hide the inactive tab overlay
+ */
+function hideInactiveTabOverlay(): void {
+  if (overlayElement && overlayElement.parentNode) {
+    overlayElement.parentNode.removeChild(overlayElement);
+    overlayElement = null;
+    console.log('✅ Inactive tab overlay hidden');
   }
 }
 
@@ -188,6 +255,8 @@ function cleanup(): void {
     localStorage.removeItem(TAB_ID_KEY);
     localStorage.removeItem(HEARTBEAT_KEY);
   }
+  
+  hideInactiveTabOverlay();
 }
 
 export default {

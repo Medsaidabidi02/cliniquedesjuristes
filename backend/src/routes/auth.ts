@@ -59,34 +59,6 @@ router.post('/login', async (req, res) => {
       });
     }
 
-    // ✅ NEW: Check if user is banned from logging in
-    try {
-      const banResult = await database.query(
-        'SELECT id, banned_until FROM login_bans WHERE user_id = ? AND banned_until > NOW()',
-        [user.id]
-      );
-      
-      if (banResult.rows.length > 0) {
-        const ban = banResult.rows[0];
-        const bannedUntil = new Date(ban.banned_until);
-        const remainingMinutes = Math.ceil((bannedUntil.getTime() - Date.now()) / (1000 * 60));
-        
-        console.log(`⛔ User ${user.id} is temporarily banned until ${bannedUntil}`);
-        return res.status(403).json({
-          success: false,
-          message: `Compte temporairement verrouillé. Réessayez dans ${remainingMinutes} minute(s).`,
-          bannedUntil: bannedUntil.toISOString()
-        });
-      }
-    } catch (banCheckError: any) {
-      // If login_bans table doesn't exist, log warning but continue
-      if (banCheckError.code === 'ER_NO_SUCH_TABLE') {
-        console.warn('⚠️ login_bans table not found - run migration: create_session_and_ban_tables.sql');
-      } else {
-        throw banCheckError;
-      }
-    }
-
     // Check password
     let isPasswordValid = false;
     if (user.password) {
@@ -430,7 +402,7 @@ router.post('/logout', async (req, res) => {
         
         console.log(`🔐 Logout for user ${userId}, session ${sessionId?.substring(0, 12)}...`);
         
-        // ✅ NEW: Invalidate session in sessions table
+        // Invalidate session in sessions table
         try {
           await database.query(
             'UPDATE sessions SET valid = FALSE WHERE id = ? AND user_id = ?',
@@ -442,26 +414,6 @@ router.post('/logout', async (req, res) => {
             console.warn('⚠️ sessions table not found - continuing without session invalidation');
           } else {
             throw sessionError;
-          }
-        }
-        
-        // ✅ NEW: Set 1-hour login ban to prevent immediate account sharing
-        try {
-          // Remove any existing ban first
-          await database.query('DELETE FROM login_bans WHERE user_id = ?', [userId]);
-          
-          // Insert new ban
-          await database.query(
-            'INSERT INTO login_bans (user_id, banned_until, reason) VALUES (?, DATE_ADD(NOW(), INTERVAL 1 HOUR), ?)',
-            [userId, 'Logout - anti-sharing cooldown']
-          );
-          
-          console.log(`✅ 1-hour login ban set for user ${userId} to prevent account sharing`);
-        } catch (banError: any) {
-          if (banError.code === 'ER_NO_SUCH_TABLE') {
-            console.warn('⚠️ login_bans table not found - continuing without ban');
-          } else {
-            throw banError;
           }
         }
         

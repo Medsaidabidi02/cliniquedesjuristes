@@ -39,16 +39,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     if (isAuthenticated && user) {
       console.log('🔒 Starting one-tab policy for authenticated user');
       
-      // Initialize one-tab policy with logout handler
-      initOneTabPolicy(() => {
-        console.log('⛔ One-tab policy triggered logout');
-        logout();
-        
-        // Redirect to login
-        if (typeof window !== 'undefined') {
-          window.location.href = '/login';
-        }
-      });
+      // Initialize one-tab policy (no longer logs out, just shows message)
+      initOneTabPolicy();
       
       return () => {
         console.log('🔓 Stopping one-tab policy');
