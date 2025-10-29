@@ -81,6 +81,7 @@
     "no_courses_message_category": "Aucun cours disponible dans la catégorie \"{{category}}\".",
     "login_required_message": "Connectez-vous pour regarder la vidéo complète",
     "alert_not_enrolled": "Vous n'êtes pas inscrit à ce cours. Contactez l'administrateur pour demander un accès.",
+    "alert_subject_restricted": "Vous n'avez pas accès à cette matière. Contactez l'administrateur pour demander un accès.",
     "instructor_placeholder": "Instructeur",
     "total_hours": "{{count}} heures au total",
     "word_videos": "cours",

@@ -81,6 +81,7 @@
     "no_courses_message_category": "No courses available in the \"{{category}}\" category.",
     "login_required_message": "Please log in to watch the full video",
     "alert_not_enrolled": "You are not enrolled in this course. Contact admin to request access.",
+    "alert_subject_restricted": "You don't have access to this subject. Contact admin to request access.",
     "instructor_placeholder": "Instructor",
     "total_hours": "{{count}} hours total",
     "word_videos": "videos",

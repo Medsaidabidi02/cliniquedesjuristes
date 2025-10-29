@@ -36,6 +36,12 @@ interface CourseWithData extends Course {
   firstVideo?: Video;
 }
 
+interface EnrollmentData {
+  courseId: number;
+  hasFullAccess: boolean;
+  allowedSubjectIds: Set<number>;
+}
+
 const CoursesPage: React.FC = () => {
   const { t } = useTranslation();
   const [courses, setCourses] = useState<CourseWithData[]>([]);
@@ -45,6 +51,7 @@ const CoursesPage: React.FC = () => {
   const [showVideoPlayer, setShowVideoPlayer] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [enrolledCourseIds, setEnrolledCourseIds] = useState<Set<number>>(new Set());
+  const [enrollmentData, setEnrollmentData] = useState<Map<number, EnrollmentData>>(new Map());
   const [expandedCourse, setExpandedCourse] = useState<number | null>(null);
   const [hoveredVideo, setHoveredVideo] = useState<Video | null>(null);
   const [previewTimeouts, setPreviewTimeouts] = useState<Map<number, NodeJS.Timeout>>(new Map());
@@ -64,6 +71,7 @@ const CoursesPage: React.FC = () => {
       fetchMyEnrollments();
     } else {
       setEnrolledCourseIds(new Set());
+      setEnrollmentData(new Map());
     }
   }, [isAuthenticated]);
 
@@ -77,16 +85,56 @@ const CoursesPage: React.FC = () => {
   const fetchMyEnrollments = async () => {
     try {
       const res: any = await api.get('/user-courses/me');
-      if (res && res.success) {
-        const ids: number[] = res.courseIds || (res.courses || []).map((c: any) => c.id) || [];
+      if (res && res.success && Array.isArray(res.courses)) {
+        const ids: number[] = res.courseIds || res.courses.map((c: any) => c.id) || [];
         setEnrolledCourseIds(new Set(ids));
+        
+        // Build enrollment data map with subject-level access info
+        const enrollMap = new Map<number, EnrollmentData>();
+        res.courses.forEach((course: any) => {
+          const subjectIds = course.subjects ? course.subjects.map((s: any) => s.id) : [];
+          enrollMap.set(course.id, {
+            courseId: course.id,
+            hasFullAccess: course.hasFullAccess || false,
+            allowedSubjectIds: new Set(subjectIds)
+          });
+        });
+        setEnrollmentData(enrollMap);
       } else if (Array.isArray(res)) {
         const ids = res.map((c: any) => c.id);
         setEnrolledCourseIds(new Set(ids));
+        // Assume full access for legacy response format
+        const enrollMap = new Map<number, EnrollmentData>();
+        res.forEach((course: any) => {
+          enrollMap.set(course.id, {
+            courseId: course.id,
+            hasFullAccess: true,
+            allowedSubjectIds: new Set()
+          });
+        });
+        setEnrollmentData(enrollMap);
       }
     } catch (err) {
       console.warn('Could not fetch enrollments:', err);
     }
+  };
+
+  // Check if user has access to a specific video based on subject-level restrictions
+  const hasVideoAccess = (video: Video): boolean => {
+    if (!video.course_id) return false;
+    
+    const enrollment = enrollmentData.get(video.course_id);
+    if (!enrollment) return false;
+    
+    // If user has full course access, allow all videos
+    if (enrollment.hasFullAccess) return true;
+    
+    // If user has subject-level access, check if video's subject is allowed
+    if (video.subject_id && enrollment.allowedSubjectIds.has(video.subject_id)) {
+      return true;
+    }
+    
+    return false;
   };
 
   const loadCoursesData = async () => {
@@ -138,9 +186,6 @@ const CoursesPage: React.FC = () => {
   };
 
   const handleVideoClick = (video: Video) => {
-    const courseId = typeof video.course_id === 'number' ? video.course_id : undefined;
-    const isEnrolled = typeof courseId === 'number' ? enrolledCourseIds.has(courseId) : false;
-
     if (!isAuthenticated) {
       navigate('/login', {
         state: {
@@ -151,8 +196,17 @@ const CoursesPage: React.FC = () => {
       return;
     }
 
+    const courseId = typeof video.course_id === 'number' ? video.course_id : undefined;
+    const isEnrolled = typeof courseId === 'number' ? enrolledCourseIds.has(courseId) : false;
+
     if (!isEnrolled) {
       alert(t('courses.alert_not_enrolled', "You are not enrolled in this course. Contact admin to request access."));
+      return;
+    }
+
+    // Check subject-level access
+    if (!hasVideoAccess(video)) {
+      alert(t('courses.alert_subject_restricted', "You don't have access to this subject. Contact admin to request access."));
       return;
     }
 
@@ -164,7 +218,7 @@ const CoursesPage: React.FC = () => {
     const courseId = typeof video.course_id === 'number' ? video.course_id : undefined;
     const isEnrolled = typeof courseId === 'number' ? enrolledCourseIds.has(courseId) : false;
 
-    if (!isAuthenticated || !isEnrolled) {
+    if (!isAuthenticated || !isEnrolled || !hasVideoAccess(video)) {
       return;
     }
 
@@ -405,37 +459,44 @@ const CoursesPage: React.FC = () => {
                               <span>{subject.hours}h</span>
                             </div>
                             <div className="subject-content">
-                              {subject.videos.map((video) => (
-                                <div
-                                  key={video.id}
-                                  className={`video-item ${!isCourseEnrolled ? 'locked' : ''}`}
-                                  onClick={() => {
-                                    if (!isAuthenticated) {
-                                      navigate('/login', {
-                                        state: {
-                                          returnTo: `/courses?video=${video.id}`
-                                        }
-                                      });
-                                      return;
-                                    }
-                                    if (!isCourseEnrolled) {
-                                      alert(t('courses.alert_not_enrolled', "You are not enrolled in this course. Contact admin to request access."));
-                                      return;
-                                    }
-                                    handleVideoClick(video);
-                                  }}
-                                  onMouseEnter={() => handleVideoHover(video, true)}
-                                  onMouseLeave={() => handleVideoHover(video, false)}
-                                >
-                                  <div style={{ display: 'flex', alignItems: 'center', flex: 1 }}>
-                                    <span className="play-icon-small">
-                                      {isCourseEnrolled ? '▶' : '🔒'}
-                                    </span>
-                                    <span className="video-title-small">{video.title}</span>
-                                  </div>
+                              {subject.videos.map((video) => {
+                                const hasAccess = isCourseEnrolled && hasVideoAccess(video);
+                                return (
+                                  <div
+                                    key={video.id}
+                                    className={`video-item ${!hasAccess ? 'locked' : ''}`}
+                                    onClick={() => {
+                                      if (!isAuthenticated) {
+                                        navigate('/login', {
+                                          state: {
+                                            returnTo: `/courses?video=${video.id}`
+                                          }
+                                        });
+                                        return;
+                                      }
+                                      if (!isCourseEnrolled) {
+                                        alert(t('courses.alert_not_enrolled', "You are not enrolled in this course. Contact admin to request access."));
+                                        return;
+                                      }
+                                      if (!hasVideoAccess(video)) {
+                                        alert(t('courses.alert_subject_restricted', "You don't have access to this subject. Contact admin to request access."));
+                                        return;
+                                      }
+                                      handleVideoClick(video);
+                                    }}
+                                    onMouseEnter={() => handleVideoHover(video, true)}
+                                    onMouseLeave={() => handleVideoHover(video, false)}
+                                  >
+                                    <div style={{ display: 'flex', alignItems: 'center', flex: 1 }}>
+                                      <span className="play-icon-small">
+                                        {hasAccess ? '▶' : '🔒'}
+                                      </span>
+                                      <span className="video-title-small">{video.title}</span>
+                                    </div>
 
-                                </div>
-                              ))}
+                                  </div>
+                                );
+                              })}
                             </div>
                           </div>
                         ))}
