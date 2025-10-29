@@ -41,9 +41,10 @@ router.post('/enroll', authenticateToken, requireAdmin, async (req, res) => {
     // Handle subject-level enrollment if subjectIds provided
     if (subjectIds && Array.isArray(subjectIds) && subjectIds.length > 0) {
       // Validate all subjects exist and belong to the course
+      const placeholders = subjectIds.map(() => '?').join(',');
       const subjectCheck = await database.query(
-        `SELECT id, title FROM subjects WHERE id IN (?) AND course_id = ? AND is_active = true`,
-        [subjectIds, courseId]
+        `SELECT id, title FROM subjects WHERE id IN (${placeholders}) AND course_id = ? AND is_active = true`,
+        [...subjectIds, courseId]
       );
 
       if (subjectCheck.rows.length !== subjectIds.length) {
