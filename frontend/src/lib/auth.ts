@@ -54,9 +54,18 @@ export const authService = {
   },
 
   // Logout user
-  logout(): void {
-    apiUtils.removeAuthToken();
-    console.log('👋 User logged out');
+  async logout(): Promise<void> {
+    try {
+      // Call backend logout endpoint to invalidate session and set ban
+      await api.post('/auth/logout', {});
+      console.log('👋 Logout API call successful');
+    } catch (error) {
+      console.error('❌ Logout API error (continuing with local logout):', error);
+    } finally {
+      // Always clear local auth data even if API call fails
+      apiUtils.removeAuthToken();
+      console.log('👋 User logged out locally');
+    }
   },
 
   // Get current user info
