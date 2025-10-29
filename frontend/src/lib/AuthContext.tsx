@@ -55,6 +55,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         stopOneTabPolicy();
       };
     }
+    
+    return undefined;
   }, [isAuthenticated, user]);
 
   useEffect(() => {
