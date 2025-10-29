@@ -144,8 +144,8 @@ router.post('/login', async (req, res) => {
         isAdmin: user.is_admin,
         sessionId: sessionId  // ✅ NEW: Include session ID in JWT
       },
-      process.env.JWT_SECRET || JWT_SECRET,
-      { expiresIn: (process.env.JWT_EXPIRES_IN || JWT_EXPIRES_IN) as any }
+      JWT_SECRET,
+      { expiresIn: JWT_EXPIRES_IN as any }
     );
     
     console.log(`🎫 JWT created with sessionId: ${sessionId.substring(0, 12)}...`);

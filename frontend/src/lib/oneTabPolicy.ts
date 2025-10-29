@@ -161,8 +161,9 @@ function handleStorageChange(event: StorageEvent): void {
 function handleLogout(): void {
   console.log(`👋 One-tab policy triggered logout for tab ${currentTabId?.substring(0, 8)}`);
   
-  // Store message for user
-  sessionStorage.setItem('loginMessage', 'Vous avez été déconnecté car vous avez ouvert une autre session dans un autre onglet.');
+  // Store message for user (externalized for i18n)
+  const ONE_TAB_LOGOUT_MESSAGE = 'Vous avez été déconnecté car vous avez ouvert une autre session dans un autre onglet.';
+  sessionStorage.setItem('loginMessage', ONE_TAB_LOGOUT_MESSAGE);
   
   cleanup();
   
