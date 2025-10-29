@@ -1,0 +1,143 @@
+/* Ensure header is a positioned ancestor for absolute placement */
+.modern-header {
+  position: relative;
+}
+
+/* Top-right flag container */
+.language-switcher {
+  position: absolute;
+  top: 12px;
+  right: 16px;
+  z-index: 70;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-family: inherit;
+}
+
+/* On RTL, place on the left */
+[dir="rtl"] .language-switcher {
+  left: 16px;
+  right: auto;
+}
+
+/* Flag button: transparent background (flags only) */
+.flag-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  background: transparent; /* flags only */
+  border: none;
+  cursor: pointer;
+  transition: transform .12s ease, box-shadow .12s ease, opacity .12s;
+  padding: 6px;
+  outline: none;
+  color: inherit;
+}
+
+/* Hover affordance: subtle backdrop so the flag is still easy to tap */
+.flag-button:hover {
+  background: rgba(15, 23, 42, 0.04);
+  transform: translateY(-2px);
+}
+.flag-button:active { transform: translateY(0); }
+
+/* SVG inside button */
+.flag-svg svg {
+  width: 22px;
+  height: 14px;
+  display: block;
+}
+
+/* small caret */
+.flag-caret {
+  font-size: 12px;
+  opacity: 0.9;
+}
+
+/* Dropdown */
+.lang-dropdown {
+  position: absolute;
+  top: 52px;
+  right: 0;
+  min-width: 180px;
+  background: #fff;
+  border-radius: 10px;
+  border: 1px solid #e6eef0;
+  box-shadow: 0 6px 24px rgba(2,6,23,0.12);
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+/* RTL dropdown placement */
+[dir="rtl"] .lang-dropdown {
+  left: 0;
+  right: auto;
+}
+
+/* Option */
+.lang-option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: transparent;
+  border: none;
+  padding: 8px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 14px;
+  color: #0f172a;
+  text-align: left;
+}
+
+.lang-option .lang-flag svg {
+  width: 26px;
+  height: 18px;
+  display: inline-block;
+}
+
+/* label flex */
+.lang-label {
+  flex: 1 1 auto;
+}
+
+/* hover/selected */
+.lang-option:hover {
+  background: #f8fafc;
+}
+
+.lang-option.selected {
+  background: rgba(6,95,64,0.06);
+  font-weight: 600;
+  color: #064e3b;
+}
+
+/* small check */
+.lang-check {
+  margin-left: auto;
+  color: #059669;
+  font-weight: 700;
+}
+
+/* Accessibility helpers (visually hidden) */
+.sr-only {
+  position: absolute !important;
+  height: 1px; width: 1px;
+  overflow: hidden;
+  clip: rect(1px, 1px, 1px, 1px);
+  white-space: nowrap;
+}
+
+/* Make switcher non-intrusive on mobile: reduce top offset if header is taller */
+@media (max-width: 640px) {
+  .language-switcher { top: 8px; right: 10px; }
+  [dir="rtl"] .language-switcher { left: 10px; right: auto; }
+  .flag-button { min-width: 34px; height: 34px; }
+  .lang-dropdown { top: 46px; min-width: 140px; }
+}
