@@ -76,11 +76,9 @@ export const authenticateToken = async (req: AuthRequest, res: Response, next: N
       console.log(`✅ Session ${decoded.sessionId?.substring(0, 12)}... validated and updated`);
       
     } catch (sessionError: any) {
-      if (sessionError.code === 'ER_NO_SUCH_TABLE') {
-        console.warn('⚠️ sessions table not found - using basic auth. Run migration: create_session_and_ban_tables.sql');
-      } else {
-        throw sessionError;
-      }
+      // Gracefully handle if sessions table doesn't exist - allow login to work
+      console.warn('⚠️ Could not validate session (table may not exist):', sessionError.code || sessionError.message);
+      console.warn('⚠️ Continuing without session validation. Run migration: create_session_and_ban_tables.sql');
     }
 
     // Validate user exists and is approved

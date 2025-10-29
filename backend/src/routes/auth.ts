@@ -85,11 +85,8 @@ router.post('/login', async (req, res) => {
       );
       console.log(`✅ Invalidated all previous sessions for user ${user.id}`);
     } catch (sessionError: any) {
-      if (sessionError.code === 'ER_NO_SUCH_TABLE') {
-        console.warn('⚠️ sessions table not found - run migration: create_session_and_ban_tables.sql');
-      } else {
-        throw sessionError;
-      }
+      // Gracefully handle if sessions table doesn't exist
+      console.warn('⚠️ Could not invalidate sessions (table may not exist):', sessionError.code || sessionError.message);
     }
 
     // ✅ NEW: Create new session in sessions table
@@ -101,11 +98,8 @@ router.post('/login', async (req, res) => {
       );
       console.log(`✅ Created new session ${sessionId.substring(0, 12)}... for user ${user.id}`);
     } catch (sessionError: any) {
-      if (sessionError.code === 'ER_NO_SUCH_TABLE') {
-        console.warn('⚠️ sessions table not found - continuing without session tracking');
-      } else {
-        throw sessionError;
-      }
+      // Gracefully handle if sessions table doesn't exist
+      console.warn('⚠️ Could not create session (table may not exist):', sessionError.code || sessionError.message);
     }
 
     // Generate JWT token with session ID embedded
@@ -410,11 +404,8 @@ router.post('/logout', async (req, res) => {
           );
           console.log(`✅ Session ${sessionId?.substring(0, 12)}... invalidated`);
         } catch (sessionError: any) {
-          if (sessionError.code === 'ER_NO_SUCH_TABLE') {
-            console.warn('⚠️ sessions table not found - continuing without session invalidation');
-          } else {
-            throw sessionError;
-          }
+          // Gracefully handle if sessions table doesn't exist
+          console.warn('⚠️ Could not invalidate session (table may not exist):', sessionError.code || sessionError.message);
         }
         
       } catch (error) {
