@@ -24,13 +24,49 @@ CREATE INDEX idx_user_courses_subject_id ON user_courses(subject_id);
 CREATE INDEX idx_user_course_subject ON user_courses(user_id, course_id, subject_id);
 
 -- Unique constraint for user+course+subject combination
+-- ⚠️ IMPORTANT: MySQL treats NULL values as distinct in unique constraints
+-- This allows multiple course-level (subject_id=NULL) enrollments to coexist
+-- with subject-level enrollments for the same user and course
+-- Example: A user can have subject_id=NULL (full course) AND subject_id=10,11 (specific subjects)
 ALTER TABLE user_courses 
 ADD UNIQUE KEY unique_user_course_subject (user_id, course_id, subject_id);
 ```
 
+**Important Note on NULL Handling:**
+The unique constraint includes `subject_id`, but MySQL treats NULL values as distinct from each other and from any actual value. This is a critical feature that allows the following scenarios:
+- User can be enrolled in Course A with `subject_id = NULL` (full course access)
+- Same user can also have subject-level enrollments like `subject_id = 10, 11, 12` for Course A
+- However, duplicate subject enrollments are prevented (can't have two records with same user+course+subject)
+
+This behavior is essential for transitioning between course-level and subject-level access.
+
 **To apply this migration:**
-1. Connect to your MySQL database
-2. Run the SQL file: `mysql -u username -p database_name < backend/migrations/add_subject_level_assignments.sql`
+
+1. **Using MySQL command-line:**
+   ```bash
+   mysql -u username -p database_name < backend/migrations/add_subject_level_assignments.sql
+   ```
+
+2. **Using phpMyAdmin or similar GUI:**
+   - Open phpMyAdmin or your database management tool
+   - Select your database
+   - Go to SQL tab
+   - Copy and paste the contents of `add_subject_level_assignments.sql`
+   - Click "Execute"
+
+3. **Using Node.js migration runner (if available):**
+   ```bash
+   npm run migrate
+   ```
+
+4. **For Docker deployments:**
+   ```bash
+   docker exec -i mysql-container mysql -u username -p database_name < backend/migrations/add_subject_level_assignments.sql
+   ```
+
+5. **For cloud databases (AWS RDS, Azure, etc.):**
+   - Connect using your preferred client (MySQL Workbench, DBeaver, etc.)
+   - Run the SQL file through the client's SQL editor
 
 ## API Changes
 
@@ -225,25 +261,39 @@ WHERE u.id = 1;
 
 ## Rollback Instructions
 
-If you need to rollback this feature:
+**⚠️ WARNING: Rollback will delete all subject-level assignment data!**
+
+If you need to rollback this feature, follow these steps carefully:
 
 ```sql
--- Remove foreign key constraint
+-- Step 1: Backup your data first!
+CREATE TABLE user_courses_backup AS SELECT * FROM user_courses;
+
+-- Step 2: Remove foreign key constraint
 ALTER TABLE user_courses DROP FOREIGN KEY fk_user_courses_subject;
 
--- Remove indexes
+-- Step 3: Remove indexes
 DROP INDEX idx_user_courses_subject_id ON user_courses;
 DROP INDEX idx_user_course_subject ON user_courses;
 
--- Remove unique constraint
+-- Step 4: Remove unique constraint
 ALTER TABLE user_courses DROP INDEX unique_user_course_subject;
 
--- Remove column
+-- Step 5: Remove column (this will delete all subject-level enrollment data)
 ALTER TABLE user_courses DROP COLUMN subject_id;
 
--- Restore old unique constraint (if it existed)
+-- Step 6: Restore old unique constraint (only if it existed before migration)
+-- Check if you had a unique constraint on (user_id, course_id) before
+-- If yes, restore it:
 -- ALTER TABLE user_courses ADD UNIQUE KEY unique_user_course (user_id, course_id);
+-- If you're not sure, check your previous schema documentation or backups
 ```
+
+**Before rollback:**
+1. Notify all admins that subject-level assignments will be lost
+2. Export a report of all subject-level enrollments for records
+3. Test the rollback on a development/staging database first
+4. Have a backup of your production database
 
 ## Security Considerations
 
@@ -251,7 +301,17 @@ ALTER TABLE user_courses DROP COLUMN subject_id;
 2. **Validation**: Subject IDs are validated to belong to the specified course
 3. **SQL Injection**: All queries use parameterized statements
 4. **Data Integrity**: Foreign key constraints ensure referential integrity
-5. **Cascade Deletion**: Deleting a subject automatically removes related enrollments
+5. **⚠️ Cascade Deletion**: 
+   - **CRITICAL**: Deleting a subject automatically removes all related user enrollments
+   - This is a potentially destructive operation that could affect many users
+   - **Recommendation**: Before deleting subjects, check enrollment count:
+     ```sql
+     SELECT COUNT(*) as affected_users 
+     FROM user_courses 
+     WHERE subject_id = YOUR_SUBJECT_ID;
+     ```
+   - Consider soft-deletion (marking `is_active = false`) instead of hard deletion
+   - Always backup before deleting subjects with enrollments
 
 ## Performance Considerations
 
