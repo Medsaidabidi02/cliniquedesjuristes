@@ -77,18 +77,28 @@ router.post('/login', async (req, res) => {
       });
     }
 
+    // ✅ CHECK IF USER IS ALREADY LOGGED IN - Prevent concurrent sessions
+    if (user.is_logged_in) {
+      console.log('⛔ User already logged in from another device:', user.id);
+      return res.status(403).json({
+        success: false,
+        message: 'Vous êtes déjà connecté sur un autre appareil. Veuillez vous déconnecter de l\'autre session avant de vous reconnecter.',
+        alreadyLoggedIn: true
+      });
+    }
+
     // Generate unique session identifier for this login
     const sessionId = crypto.randomUUID();
 
     // ✅ SIMPLE ONE-SESSION-PER-USER: Set is_logged_in = TRUE and store current_session_id
-    // This automatically invalidates any previous session (old tokens will be rejected)
+    // User must logout from other device first (checked above)
     try {
       await database.query(
         'UPDATE users SET is_logged_in = TRUE, current_session_id = ? WHERE id = ?',
         [sessionId, user.id]
       );
       console.log(`✅ Set is_logged_in = TRUE and current_session_id for user ${user.id}`);
-      console.log(`   Any previous session is now invalid`);
+      console.log(`   User was not previously logged in (check passed)`);
     } catch (loginError: any) {
       // Gracefully handle if columns don't exist yet - fall back to basic approach
       console.warn('⚠️ Could not set session tracking (columns may not exist):', loginError.code || loginError.message);
