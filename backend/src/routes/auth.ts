@@ -91,42 +91,7 @@ router.post('/login', loginRateLimiter, async (req, res) => {
       });
     }
 
-    // ✅ Check for login ban (progressive cooldown)
-    try {
-      const banCheck = await checkLoginBan(user.id);
-      
-      if (banCheck.isBanned) {
-        const hours = Math.floor((banCheck.remainingMinutes || 0) / 60);
-        const minutes = (banCheck.remainingMinutes || 0) % 60;
-        let timeMessage = '';
-        
-        if (hours > 0) {
-          timeMessage = `${hours} heure${hours > 1 ? 's' : ''}`;
-          if (minutes > 0) {
-            timeMessage += ` et ${minutes} minute${minutes > 1 ? 's' : ''}`;
-          }
-        } else {
-          timeMessage = `${minutes} minute${minutes > 1 ? 's' : ''}`;
-        }
-        
-        console.log(`🚫 User ${user.id} is banned for ${timeMessage}`);
-        
-        return res.status(403).json({
-          success: false,
-          message: `Compte temporairement verrouillé. Réessayez dans ${timeMessage}.`,
-          isBanned: true,
-          bannedUntil: banCheck.bannedUntil,
-          remainingMinutes: banCheck.remainingMinutes,
-          cooldownLevel: banCheck.cooldownLevel,
-          reason: banCheck.reason
-        });
-      }
-    } catch (banError: any) {
-      // Gracefully handle if ban system not available
-      console.warn('⚠️ Could not check login ban:', banError.message);
-    }
-
-    // Generate device fingerprint
+    // Generate device fingerprint EARLY to check for same-device before ban check
     const deviceFingerprint = generateDeviceFingerprint(req, clientDeviceFingerprint);
     const ownerLabel = generateOwnershipLabel(userAgent, ipAddress);
     
@@ -143,7 +108,7 @@ router.post('/login', loginRateLimiter, async (req, res) => {
         for (const session of activeSessions) {
           if (session.deviceFingerprint && isSameDevice(session.deviceFingerprint, deviceFingerprint)) {
             isSameDeviceLogin = true;
-            console.log(`✅ Same device detected - no cooldown will be applied`);
+            console.log(`✅ Same device detected - ban check will be skipped`);
             break;
           }
         }
@@ -162,6 +127,46 @@ router.post('/login', loginRateLimiter, async (req, res) => {
       }
     } catch (sessionError: any) {
       console.warn('⚠️ Could not check existing sessions:', sessionError.message);
+    }
+
+    // ✅ Check for login ban (progressive cooldown) - ONLY for different device logins
+    // Same device logins bypass the ban check to allow legitimate same-device re-logins
+    if (!isSameDeviceLogin) {
+      try {
+        const banCheck = await checkLoginBan(user.id);
+        
+        if (banCheck.isBanned) {
+          const hours = Math.floor((banCheck.remainingMinutes || 0) / 60);
+          const minutes = (banCheck.remainingMinutes || 0) % 60;
+          let timeMessage = '';
+          
+          if (hours > 0) {
+            timeMessage = `${hours} heure${hours > 1 ? 's' : ''}`;
+            if (minutes > 0) {
+              timeMessage += ` et ${minutes} minute${minutes > 1 ? 's' : ''}`;
+            }
+          } else {
+            timeMessage = `${minutes} minute${minutes > 1 ? 's' : ''}`;
+          }
+          
+          console.log(`🚫 User ${user.id} is banned for ${timeMessage} (different device login)`);
+          
+          return res.status(403).json({
+            success: false,
+            message: `Compte temporairement verrouillé suite à un changement d'appareil. Réessayez dans ${timeMessage}.`,
+            isBanned: true,
+            bannedUntil: banCheck.bannedUntil,
+            remainingMinutes: banCheck.remainingMinutes,
+            cooldownLevel: banCheck.cooldownLevel,
+            reason: banCheck.reason
+          });
+        }
+      } catch (banError: any) {
+        // Gracefully handle if ban system not available
+        console.warn('⚠️ Could not check login ban:', banError.message);
+      }
+    } else {
+      console.log(`✅ Same device login - skipping ban check for user ${user.id}`);
     }
 
     // ✅ Invalidate ALL existing sessions for this user (single-session enforcement)
