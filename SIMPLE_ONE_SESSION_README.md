@@ -457,7 +457,7 @@ If you were using the previous complex session system:
 
 The simple system is recommended for most use cases unless you specifically need:
 - Login bans after logout
-- Detailed session tracking (IP, user agent, last activity)
+- Detailed session tracking (IP, user agent, activity timestamps)
 - One-tab enforcement within same device
 
 For the basic requirement of "one user, one session", the simple `is_logged_in` + `current_session_id` approach is the cleanest solution.
