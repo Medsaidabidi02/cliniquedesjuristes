@@ -98,23 +98,32 @@ router.post('/login', loginRateLimiter, async (req, res) => {
     console.log(`📱 Device fingerprint: ${deviceFingerprint.substring(0, 16)}...`);
     console.log(`🏷️ Owner label: ${ownerLabel}`);
 
-    // ✅ Check for existing active sessions (for same-device detection)
+    // ✅ Check for existing active sessions (for same-device detection and session blocking)
     let isSameDeviceLogin = false;
+    let hasActiveSession = false;
+    let activeSessionOwnerLabel: string | null = null;
+    
     try {
       const activeSessions = await getActiveUserSessions(user.id);
       
       if (activeSessions.length > 0) {
+        hasActiveSession = true;
+        activeSessionOwnerLabel = activeSessions[0].ownerLabel;
+        
         // Check if any active session is from the same device
         for (const session of activeSessions) {
           if (session.deviceFingerprint && isSameDevice(session.deviceFingerprint, deviceFingerprint)) {
             isSameDeviceLogin = true;
-            console.log(`✅ Same device detected - ban check will be skipped`);
+            console.log(`✅ Same device detected - allowing re-login`);
             break;
           }
         }
         
-        // Record device switch if this is a different device
-        if (!isSameDeviceLogin && activeSessions[0]) {
+        // If different device and active session exists, BLOCK login
+        if (!isSameDeviceLogin) {
+          console.log(`🚫 Active session exists - blocking login from different device for user ${user.id}`);
+          
+          // Record device switch attempt
           await recordDeviceSwitch({
             userId: user.id,
             fromDeviceFingerprint: activeSessions[0].deviceFingerprint,
@@ -122,7 +131,14 @@ router.post('/login', loginRateLimiter, async (req, res) => {
             fromIp: activeSessions[0].ipAddress,
             toIp: ipAddress
           });
-          console.log(`📊 Device switch recorded for user ${user.id}`);
+          
+          return res.status(409).json({
+            success: false,
+            message: 'Vous êtes déjà connecté sur un autre appareil. Veuillez vous déconnecter d\'abord.',
+            hasActiveSession: true,
+            ownerLabel: activeSessionOwnerLabel,
+            needsLogout: true
+          });
         }
       }
     } catch (sessionError: any) {

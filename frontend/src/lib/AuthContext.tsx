@@ -3,6 +3,7 @@ import { authService, User as AuthUser } from './auth';
 import { apiUtils, getErrorMessage } from './api';
 import { initOneTabPolicy, stopOneTabPolicy } from './oneTabPolicy';
 import { startSessionHealthCheck, stopSessionHealthCheck } from './sessionHealthCheck';
+import AnotherTabActivePage from '../pages/AnotherTabActivePage';
 
 type User = AuthUser;
 
@@ -34,14 +35,17 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => apiUtils.isAuthenticated());
+  const [showInactiveTab, setShowInactiveTab] = useState<boolean>(false);
 
   // ✅ Initialize one-tab policy and session health check when authenticated
   useEffect(() => {
     if (isAuthenticated && user) {
       console.log('🔒 Starting one-tab policy for authenticated user');
       
-      // Initialize one-tab policy (no longer logs out, just shows message)
-      initOneTabPolicy();
+      // Initialize one-tab policy with callback to show inactive tab page
+      initOneTabPolicy(() => {
+        setShowInactiveTab(true);
+      });
       
       // Start session health check
       startSessionHealthCheck();
@@ -50,6 +54,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         console.log('🔓 Stopping one-tab policy and session health check');
         stopOneTabPolicy();
         stopSessionHealthCheck();
+        setShowInactiveTab(false);
       };
     }
     
@@ -181,7 +186,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
   return (
     <AuthContext.Provider value={{ user, loading, error, login, logout, isAuthenticated }}>
-      {children}
+      {showInactiveTab ? <AnotherTabActivePage /> : children}
     </AuthContext.Provider>
   );
 };

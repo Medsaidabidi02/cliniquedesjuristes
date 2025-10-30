@@ -1,6 +1,6 @@
 /**
  * One-Tab Policy Implementation
- * Shows a message when multiple tabs are open instead of logging out
+ * Shows a React component when multiple tabs are open
  * Uses localStorage events to detect multiple tabs
  */
 
@@ -12,16 +12,19 @@ const HEARTBEAT_TIMEOUT = 5000; // 5 seconds
 let currentTabId: string | null = null;
 let heartbeatInterval: NodeJS.Timeout | null = null;
 let isActiveTab: boolean = true;
-let overlayElement: HTMLDivElement | null = null;
+
+// Callback to notify when tab becomes inactive
+let onInactiveCallback: (() => void) | null = null;
 
 /**
  * Initialize one-tab policy for the current tab
- * @param onInactive Callback function to execute when tab becomes inactive (optional, not used for logout anymore)
+ * @param onInactive Callback function to execute when tab becomes inactive
  */
 export function initOneTabPolicy(onInactive?: () => void): void {
   if (typeof window === 'undefined') return;
 
   currentTabId = generateTabId();
+  onInactiveCallback = onInactive || null;
   
   console.log(`🔒 One-tab policy initialized for tab ${currentTabId.substring(0, 8)}`);
 
@@ -53,6 +56,13 @@ export function stopOneTabPolicy(): void {
 }
 
 /**
+ * Check if current tab is active
+ */
+export function isCurrentTabActive(): boolean {
+  return isActiveTab;
+}
+
+/**
  * Generate a unique ID for this tab
  */
 function generateTabId(): string {
@@ -77,7 +87,7 @@ function checkAndClaimActiveTab(): void {
       if (timeSinceHeartbeat < HEARTBEAT_TIMEOUT) {
         console.log(`⚠️ Another tab (${existingTabId.substring(0, 8)}) is active. This tab is inactive.`);
         isActiveTab = false;
-        showInactiveTabOverlay();
+        notifyInactive();
         return;
       }
     } catch (e) {
@@ -89,7 +99,15 @@ function checkAndClaimActiveTab(): void {
   isActiveTab = true;
   localStorage.setItem(TAB_ID_KEY, currentTabId);
   updateHeartbeat();
-  hideInactiveTabOverlay();
+}
+
+/**
+ * Notify that tab is inactive
+ */
+function notifyInactive(): void {
+  if (onInactiveCallback) {
+    onInactiveCallback();
+  }
 }
 
 /**
@@ -126,7 +144,7 @@ function startHeartbeat(): void {
     if (activeTabId !== currentTabId) {
       console.warn(`⚠️ Another tab (${activeTabId?.substring(0, 8)}) is now active. This tab is inactive.`);
       isActiveTab = false;
-      showInactiveTabOverlay();
+      notifyInactive();
       return;
     }
 
@@ -145,7 +163,7 @@ function handleStorageChange(event: StorageEvent): void {
   if (event.key === TAB_ID_KEY && event.newValue && event.newValue !== currentTabId) {
     console.warn(`⚠️ Tab ${event.newValue.substring(0, 8)} claimed active status. This tab is now inactive.`);
     isActiveTab = false;
-    showInactiveTabOverlay();
+    notifyInactive();
     return;
   }
 
@@ -162,93 +180,12 @@ function handleStorageChange(event: StorageEvent): void {
           // Another tab is correctly marked as active
           console.warn(`⚠️ Tab ${heartbeat.tabId.substring(0, 8)} is the active tab. This tab is inactive.`);
           isActiveTab = false;
-          showInactiveTabOverlay();
+          notifyInactive();
         }
       }
     } catch (error) {
       console.error('Error parsing heartbeat:', error);
     }
-  }
-}
-
-/**
- * Show overlay message when tab is inactive
- */
-function showInactiveTabOverlay(): void {
-  if (typeof window === 'undefined') return;
-  
-  // Don't create duplicate overlays
-  if (overlayElement) return;
-
-  overlayElement = document.createElement('div');
-  overlayElement.style.cssText = `
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    background-color: rgba(0, 0, 0, 0.95);
-    z-index: 999999;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    color: white;
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif;
-  `;
-
-  const icon = document.createElement('div');
-  icon.style.cssText = `
-    font-size: 72px;
-    margin-bottom: 24px;
-  `;
-  icon.textContent = '⚠️';
-
-  const message = document.createElement('div');
-  message.style.cssText = `
-    font-size: 28px;
-    font-weight: 600;
-    text-align: center;
-    margin-bottom: 16px;
-  `;
-  message.textContent = 'Another tab is active';
-
-  const subMessage = document.createElement('div');
-  subMessage.style.cssText = `
-    font-size: 18px;
-    text-align: center;
-    color: rgba(255, 255, 255, 0.8);
-    margin-bottom: 24px;
-  `;
-  subMessage.textContent = 'Please use that tab, or close it to continue here';
-  
-  const helpText = document.createElement('div');
-  helpText.style.cssText = `
-    font-size: 14px;
-    text-align: center;
-    color: rgba(255, 255, 255, 0.6);
-    max-width: 400px;
-    line-height: 1.6;
-  `;
-  helpText.textContent = 'This security measure prevents using multiple tabs simultaneously to protect against account sharing.';
-
-  overlayElement.appendChild(icon);
-  overlayElement.appendChild(message);
-  overlayElement.appendChild(subMessage);
-  overlayElement.appendChild(helpText);
-
-  document.body.appendChild(overlayElement);
-  console.log('🚫 Inactive tab overlay shown');
-}
-
-/**
- * Hide the inactive tab overlay
- */
-function hideInactiveTabOverlay(): void {
-  if (overlayElement && overlayElement.parentNode) {
-    overlayElement.parentNode.removeChild(overlayElement);
-    overlayElement = null;
-    console.log('✅ Inactive tab overlay hidden');
   }
 }
 
@@ -267,8 +204,6 @@ function cleanup(): void {
     localStorage.removeItem(TAB_ID_KEY);
     localStorage.removeItem(HEARTBEAT_KEY);
   }
-  
-  hideInactiveTabOverlay();
 }
 
 const oneTabPolicy = {

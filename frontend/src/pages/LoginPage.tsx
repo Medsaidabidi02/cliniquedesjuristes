@@ -77,7 +77,12 @@ const LoginPage: React.FC = () => {
       
       // Check if this is a ban/cooldown error with specific details
       const errorResponse = err?.response?.data;
-      if (errorResponse?.isBanned) {
+      
+      // Check if already logged in elsewhere
+      if (errorResponse?.hasActiveSession || errorResponse?.needsLogout) {
+        const activeSessionMessage = `🔐 Vous êtes déjà connecté${errorResponse.ownerLabel ? ` sur: ${errorResponse.ownerLabel}` : ' sur un autre appareil'}. Veuillez vous déconnecter d'abord pour continuer.`;
+        setError(activeSessionMessage);
+      } else if (errorResponse?.isBanned) {
         const hours = Math.floor((errorResponse.remainingMinutes || 0) / 60);
         const minutes = (errorResponse.remainingMinutes || 0) % 60;
         let timeMessage = '';
