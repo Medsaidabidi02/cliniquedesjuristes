@@ -1,4 +1,5 @@
 import { api, apiUtils } from './api';
+import { getDeviceFingerprint } from './deviceFingerprint';
 
 export interface User {
   id: number;
@@ -16,6 +17,12 @@ interface LoginResponse {
   message?: string;
   token: string;
   user: User;
+  ownerLabel?: string;
+  isBanned?: boolean;
+  bannedUntil?: string;
+  remainingMinutes?: number;
+  cooldownLevel?: number;
+  reason?: string;
 }
 
 interface CurrentUserResponse {
@@ -26,12 +33,17 @@ interface CurrentUserResponse {
 
 export const authService = {
   // Login user
-  async login(credentials: { email: string; password: string }): Promise<{ user: User; token: string }> {
+  async login(credentials: { email: string; password: string }): Promise<{ user: User; token: string; ownerLabel?: string }> {
     try {
       console.log('🔐 Attempting login with:', { email: credentials.email, passwordLength: credentials.password.length });
       
+      // Get device fingerprint
+      const deviceFingerprint = await getDeviceFingerprint();
       
-      const response = await api.post<LoginResponse>('/auth/login', credentials);
+      const response = await api.post<LoginResponse>('/auth/login', {
+        ...credentials,
+        deviceFingerprint
+      });
       
       if (response && response.token && response.user) {
         // Store token and user data
@@ -39,9 +51,14 @@ export const authService = {
         apiUtils.setUserData(response.user);
         
         console.log('👤 Login successful for user:', response.user.name);
+        if (response.ownerLabel) {
+          console.log('🏷️ Session ownership:', response.ownerLabel);
+        }
+        
         return {
           user: response.user,
-          token: response.token
+          token: response.token,
+          ownerLabel: response.ownerLabel
         };
       }
       

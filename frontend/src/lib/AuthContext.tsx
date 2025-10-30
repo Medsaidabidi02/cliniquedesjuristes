@@ -2,6 +2,7 @@ import React, { createContext, useState, useEffect, useContext, ReactNode } from
 import { authService, User as AuthUser } from './auth';
 import { apiUtils, getErrorMessage } from './api';
 import { initOneTabPolicy, stopOneTabPolicy } from './oneTabPolicy';
+import { startSessionHealthCheck, stopSessionHealthCheck } from './sessionHealthCheck';
 
 type User = AuthUser;
 
@@ -34,7 +35,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const [error, setError] = useState<string | null>(null);
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => apiUtils.isAuthenticated());
 
-  // ✅ NEW: Initialize one-tab policy when authenticated
+  // ✅ Initialize one-tab policy and session health check when authenticated
   useEffect(() => {
     if (isAuthenticated && user) {
       console.log('🔒 Starting one-tab policy for authenticated user');
@@ -42,9 +43,13 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       // Initialize one-tab policy (no longer logs out, just shows message)
       initOneTabPolicy();
       
+      // Start session health check
+      startSessionHealthCheck();
+      
       return () => {
-        console.log('🔓 Stopping one-tab policy');
+        console.log('🔓 Stopping one-tab policy and session health check');
         stopOneTabPolicy();
+        stopSessionHealthCheck();
       };
     }
     
@@ -158,10 +163,11 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
   const logout = async () => {
     try {
-      // ✅ NEW: Stop one-tab policy before logout
+      // ✅ Stop one-tab policy and session health check before logout
       stopOneTabPolicy();
+      stopSessionHealthCheck();
       
-      // ✅ NEW: Call backend logout endpoint
+      // ✅ Call backend logout endpoint
       await authService.logout();
       
       apiUtils.removeAuthToken();

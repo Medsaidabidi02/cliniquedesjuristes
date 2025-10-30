@@ -72,9 +72,30 @@ const LoginPage: React.FC = () => {
 
       // Regular user -> redirect path
       navigate(redirectPath);
-    } catch (err) {
+    } catch (err: any) {
       console.error('❌ Login error:', err);
-      setError(err instanceof Error ? err.message : t('auth.login.error_default', 'Login failed. Please check your credentials.'));
+      
+      // Check if this is a ban/cooldown error with specific details
+      const errorResponse = err?.response?.data;
+      if (errorResponse?.isBanned) {
+        const hours = Math.floor((errorResponse.remainingMinutes || 0) / 60);
+        const minutes = (errorResponse.remainingMinutes || 0) % 60;
+        let timeMessage = '';
+        
+        if (hours > 0) {
+          timeMessage = `${hours} heure${hours > 1 ? 's' : ''}`;
+          if (minutes > 0) {
+            timeMessage += ` et ${minutes} minute${minutes > 1 ? 's' : ''}`;
+          }
+        } else {
+          timeMessage = `${minutes} minute${minutes > 1 ? 's' : ''}`;
+        }
+        
+        const cooldownMessage = `🚫 Compte temporairement verrouillé suite à plusieurs changements d'appareil. Réessayez dans ${timeMessage}. Cette mesure protège contre le partage de compte.`;
+        setError(cooldownMessage);
+      } else {
+        setError(err instanceof Error ? err.message : t('auth.login.error_default', 'Login failed. Please check your credentials.'));
+      }
     } finally {
       setLoading(false);
     }

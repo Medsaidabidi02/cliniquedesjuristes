@@ -211,19 +211,31 @@ function showInactiveTabOverlay(): void {
     text-align: center;
     margin-bottom: 16px;
   `;
-  message.textContent = 'Another tab is open';
+  message.textContent = 'Another tab is active';
 
   const subMessage = document.createElement('div');
   subMessage.style.cssText = `
     font-size: 18px;
     text-align: center;
     color: rgba(255, 255, 255, 0.8);
+    margin-bottom: 24px;
   `;
-  subMessage.textContent = 'Please use that tab';
+  subMessage.textContent = 'Please use that tab, or close it to continue here';
+  
+  const helpText = document.createElement('div');
+  helpText.style.cssText = `
+    font-size: 14px;
+    text-align: center;
+    color: rgba(255, 255, 255, 0.6);
+    max-width: 400px;
+    line-height: 1.6;
+  `;
+  helpText.textContent = 'This security measure prevents using multiple tabs simultaneously to protect against account sharing.';
 
   overlayElement.appendChild(icon);
   overlayElement.appendChild(message);
   overlayElement.appendChild(subMessage);
+  overlayElement.appendChild(helpText);
 
   document.body.appendChild(overlayElement);
   console.log('🚫 Inactive tab overlay shown');
@@ -259,7 +271,9 @@ function cleanup(): void {
   hideInactiveTabOverlay();
 }
 
-export default {
+const oneTabPolicy = {
   init: initOneTabPolicy,
   stop: stopOneTabPolicy
 };
+
+export default oneTabPolicy;
