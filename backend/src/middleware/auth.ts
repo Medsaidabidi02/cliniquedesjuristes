@@ -40,50 +40,9 @@ export const authenticateToken = async (req: AuthRequest, res: Response, next: N
     const decoded = jwt.verify(token, JWT_SECRET) as any;
     console.log(`🔍 Token decoded for user ${decoded.id}`);
 
-    // ✅ NEW: Validate session in sessions table
-    try {
-      const sessionResult = await database.query(
-        'SELECT id, user_id, valid, ip_address, user_agent FROM sessions WHERE id = ? AND user_id = ?',
-        [decoded.sessionId, decoded.id]
-      );
-      
-      if (sessionResult.rows.length === 0) {
-        console.warn(`❌ Session ${decoded.sessionId?.substring(0, 12)}... not found for user ${decoded.id}`);
-        return res.status(401).json({ 
-          error: 'Session expired - logged in from another device',
-          sessionExpired: true,
-          loggedInElsewhere: true
-        });
-      }
-      
-      const session = sessionResult.rows[0];
-      
-      if (!session.valid) {
-        console.warn(`❌ Session ${decoded.sessionId?.substring(0, 12)}... is invalid (logged in elsewhere)`);
-        return res.status(401).json({ 
-          error: 'Session expired - logged in from another device',
-          sessionExpired: true,
-          loggedInElsewhere: true
-        });
-      }
-      
-      // Update last activity
-      await database.query(
-        'UPDATE sessions SET last_activity = NOW() WHERE id = ?',
-        [decoded.sessionId]
-      );
-      
-      console.log(`✅ Session ${decoded.sessionId?.substring(0, 12)}... validated and updated`);
-      
-    } catch (sessionError: any) {
-      // Gracefully handle if sessions table doesn't exist - allow login to work
-      console.warn('⚠️ Could not validate session (table may not exist):', sessionError.code || sessionError.message);
-      console.warn('⚠️ Continuing without session validation. Run migration: create_session_and_ban_tables.sql');
-    }
-
-    // Validate user exists and is approved
+    // ✅ SIMPLE ONE-SESSION-PER-USER: Validate user exists, is approved, is_logged_in, and session matches
     const result = await database.query(
-      'SELECT id, email, is_admin, is_approved FROM users WHERE id = ?', 
+      'SELECT id, email, is_admin, is_approved, is_logged_in, current_session_id FROM users WHERE id = ?', 
       [decoded.id]
     );
     
@@ -97,6 +56,33 @@ export const authenticateToken = async (req: AuthRequest, res: Response, next: N
     if (!user.is_approved) {
       console.warn(`⛔ User ${decoded.id} not approved`);
       return res.status(403).json({ error: 'User not approved' });
+    }
+
+    // Check if user is still logged in (simple one-session enforcement)
+    if (user.is_logged_in !== undefined && !user.is_logged_in) {
+      console.warn(`❌ User ${decoded.id} is not logged in (logged out)`);
+      return res.status(401).json({ 
+        error: 'Session expired - logged out',
+        sessionExpired: true,
+        loggedInElsewhere: false
+      });
+    }
+
+    // Check if session ID matches (ensures only one session is valid)
+    if (user.current_session_id !== undefined) {
+      if (user.current_session_id !== decoded.sessionId) {
+        console.warn(`❌ User ${decoded.id} session mismatch (logged in elsewhere)`);
+        console.warn(`   Expected: ${user.current_session_id?.substring(0, 12)}..., Got: ${decoded.sessionId?.substring(0, 12)}...`);
+        return res.status(401).json({ 
+          error: 'Session expired - logged in from another device',
+          sessionExpired: true,
+          loggedInElsewhere: true
+        });
+      }
+      console.log(`✅ User ${decoded.id} session ID matches - authenticated`);
+    } else {
+      // Fallback for databases without current_session_id column
+      console.log(`✅ User ${decoded.id} is_logged_in check passed (basic mode)`);
     }
 
     // Attach complete user info to request for downstream handlers

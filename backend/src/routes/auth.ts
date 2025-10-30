@@ -33,9 +33,9 @@ router.post('/login', async (req, res) => {
       });
     }
 
-    // Get user from database
+    // Get user from database (including is_logged_in flag)
     const userResult = await database.query(
-      'SELECT id, name, email, password, is_admin, is_approved, created_at FROM users WHERE LOWER(TRIM(email)) = ?',
+      'SELECT id, name, email, password, is_admin, is_approved, is_logged_in, created_at FROM users WHERE LOWER(TRIM(email)) = ?',
       [email]
     );
 
@@ -77,29 +77,40 @@ router.post('/login', async (req, res) => {
       });
     }
 
-    // ✅ NEW: Invalidate ALL existing sessions for this user (single-session enforcement)
-    try {
-      await database.query(
-        'UPDATE sessions SET valid = FALSE WHERE user_id = ? AND valid = TRUE',
-        [user.id]
-      );
-      console.log(`✅ Invalidated all previous sessions for user ${user.id}`);
-    } catch (sessionError: any) {
-      // Gracefully handle if sessions table doesn't exist
-      console.warn('⚠️ Could not invalidate sessions (table may not exist):', sessionError.code || sessionError.message);
+    // ✅ CHECK IF USER IS ALREADY LOGGED IN - Prevent concurrent sessions
+    if (user.is_logged_in) {
+      console.log('⛔ User already logged in from another device:', user.id);
+      return res.status(403).json({
+        success: false,
+        message: 'Vous êtes déjà connecté sur un autre appareil. Veuillez vous déconnecter de l\'autre session avant de vous reconnecter.',
+        alreadyLoggedIn: true
+      });
     }
 
-    // ✅ NEW: Create new session in sessions table
+    // Generate unique session identifier for this login
     const sessionId = crypto.randomUUID();
+
+    // ✅ SIMPLE ONE-SESSION-PER-USER: Set is_logged_in = TRUE and store current_session_id
+    // User must logout from other device first (checked above)
     try {
       await database.query(
-        'INSERT INTO sessions (id, user_id, valid, ip_address, user_agent, last_activity) VALUES (?, ?, TRUE, ?, ?, NOW())',
-        [sessionId, user.id, ipAddress, userAgent]
+        'UPDATE users SET is_logged_in = TRUE, current_session_id = ? WHERE id = ?',
+        [sessionId, user.id]
       );
-      console.log(`✅ Created new session ${sessionId.substring(0, 12)}... for user ${user.id}`);
-    } catch (sessionError: any) {
-      // Gracefully handle if sessions table doesn't exist
-      console.warn('⚠️ Could not create session (table may not exist):', sessionError.code || sessionError.message);
+      console.log(`✅ Set is_logged_in = TRUE and current_session_id for user ${user.id}`);
+      console.log(`   User was not previously logged in (check passed)`);
+    } catch (loginError: any) {
+      // Gracefully handle if columns don't exist yet - fall back to basic approach
+      console.warn('⚠️ Could not set session tracking (columns may not exist):', loginError.code || loginError.message);
+      try {
+        await database.query(
+          'UPDATE users SET is_logged_in = TRUE WHERE id = ?',
+          [user.id]
+        );
+        console.log(`✅ Set is_logged_in = TRUE for user ${user.id} (basic mode)`);
+      } catch (basicError: any) {
+        console.warn('⚠️ Could not set is_logged_in flag:', basicError.code || basicError.message);
+      }
     }
 
     // Generate JWT token with session ID embedded
@@ -108,13 +119,13 @@ router.post('/login', async (req, res) => {
         id: user.id,
         email: user.email,
         isAdmin: user.is_admin,
-        sessionId: sessionId  // ✅ NEW: Include session ID in JWT
+        sessionId: sessionId  // Include unique session ID in token
       },
       JWT_SECRET,
       { expiresIn: JWT_EXPIRES_IN as any }
     );
     
-    console.log(`🎫 JWT created with sessionId: ${sessionId.substring(0, 12)}...`);
+    console.log(`🎫 JWT created with sessionId: ${sessionId.substring(0, 12)}... for user ${user.id}`);
 
     res.json({
       success: true,
@@ -396,16 +407,25 @@ router.post('/logout', async (req, res) => {
         
         console.log(`🔐 Logout for user ${userId}, session ${sessionId?.substring(0, 12)}...`);
         
-        // Invalidate session in sessions table
+        // ✅ SIMPLE ONE-SESSION-PER-USER: Set is_logged_in = FALSE and clear current_session_id
         try {
           await database.query(
-            'UPDATE sessions SET valid = FALSE WHERE id = ? AND user_id = ?',
-            [sessionId, userId]
+            'UPDATE users SET is_logged_in = FALSE, current_session_id = NULL WHERE id = ?',
+            [userId]
           );
-          console.log(`✅ Session ${sessionId?.substring(0, 12)}... invalidated`);
-        } catch (sessionError: any) {
-          // Gracefully handle if sessions table doesn't exist
-          console.warn('⚠️ Could not invalidate session (table may not exist):', sessionError.code || sessionError.message);
+          console.log(`✅ Set is_logged_in = FALSE and cleared session ID for user ${userId}`);
+        } catch (logoutError: any) {
+          // Gracefully handle if columns don't exist yet - fall back to basic approach
+          console.warn('⚠️ Could not clear session tracking (columns may not exist):', logoutError.code || logoutError.message);
+          try {
+            await database.query(
+              'UPDATE users SET is_logged_in = FALSE WHERE id = ?',
+              [userId]
+            );
+            console.log(`✅ Set is_logged_in = FALSE for user ${userId} (basic mode)`);
+          } catch (basicError: any) {
+            console.warn('⚠️ Could not set is_logged_in flag:', basicError.code || basicError.message);
+          }
         }
         
       } catch (error) {

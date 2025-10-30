@@ -9,6 +9,31 @@ const startServer = async () => {
     console.log(`✅ Database test query successful for Medsaidabidi02: ${JSON.stringify(testResult.rows)}`);
     console.log('✅ Database connected successfully');
 
+    // ✅ SIMPLE ONE-SESSION-PER-USER: Reset all is_logged_in flags on server restart
+    // This ensures clean state and handles users who closed browser without logging out
+    try {
+      const resetResult = await database.query(
+        'UPDATE users SET is_logged_in = FALSE, current_session_id = NULL WHERE is_logged_in = TRUE'
+      );
+      if (resetResult.affectedRows > 0) {
+        console.log(`✅ Reset is_logged_in and session IDs for ${resetResult.affectedRows} user(s) on server restart`);
+      }
+    } catch (resetError: any) {
+      // Gracefully handle if columns don't exist yet - try basic approach
+      console.warn('⚠️ Could not reset session tracking (columns may not exist):', resetError.code || resetError.message);
+      try {
+        const basicResetResult = await database.query(
+          'UPDATE users SET is_logged_in = FALSE WHERE is_logged_in = TRUE'
+        );
+        if (basicResetResult.affectedRows > 0) {
+          console.log(`✅ Reset is_logged_in for ${basicResetResult.affectedRows} user(s) (basic mode)`);
+        }
+      } catch (basicError: any) {
+        console.warn('⚠️ Could not reset is_logged_in flags:', basicError.code || basicError.message);
+      }
+      console.warn('⚠️ Run migration: add_is_logged_in_column.sql');
+    }
+
     // Check if admin exists
     const adminCheck = await database.query(
       'SELECT email, is_admin, is_approved FROM users WHERE is_admin = true'
