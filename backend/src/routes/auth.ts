@@ -2,6 +2,7 @@ import express from 'express';
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import crypto from 'crypto';
+import rateLimit from 'express-rate-limit';
 import database from '../config/database';
 
 const router = express.Router();
@@ -12,8 +13,26 @@ const JWT_SECRET: string = process.env.JWT_SECRET || 'legal-education-platform-s
 // Make token lifetime configurable; longer in development for convenience
 const JWT_EXPIRES_IN: string = process.env.JWT_EXPIRES_IN || (process.env.NODE_ENV === 'production' ? '1h' : '7d');
 
+// Rate limiter for session status endpoint
+const sessionStatusLimiter = rateLimit({
+  windowMs: 1 * 60 * 1000, // 1 minute
+  max: 20, // 20 requests per minute (more than enough for 30s polling)
+  message: 'Trop de requêtes, veuillez réessayer dans quelques instants',
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+// Rate limiter for login endpoint
+const loginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 10, // 10 login attempts per 15 minutes
+  message: 'Trop de tentatives de connexion, veuillez réessayer plus tard',
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
 // Login route with single-session enforcement and progressive cooldown
-router.post('/login', async (req, res) => {
+router.post('/login', loginLimiter, async (req, res) => {
   try {
     let { email, password } = req.body;
     const ipAddress = req.ip || req.socket.remoteAddress || 'unknown';
@@ -232,7 +251,7 @@ router.post('/login', async (req, res) => {
 });
 
 // Check session status endpoint (for session-active page)
-router.get('/session-status', async (req, res) => {
+router.get('/session-status', sessionStatusLimiter, async (req, res) => {
   try {
     const authHeader = req.headers['authorization'];
     if (!authHeader) {
