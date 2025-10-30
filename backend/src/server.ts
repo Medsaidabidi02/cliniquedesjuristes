@@ -13,14 +13,24 @@ const startServer = async () => {
     // This ensures clean state and handles users who closed browser without logging out
     try {
       const resetResult = await database.query(
-        'UPDATE users SET is_logged_in = FALSE WHERE is_logged_in = TRUE'
+        'UPDATE users SET is_logged_in = FALSE, current_session_id = NULL WHERE is_logged_in = TRUE'
       );
       if (resetResult.affectedRows > 0) {
-        console.log(`✅ Reset is_logged_in flag for ${resetResult.affectedRows} user(s) on server restart`);
+        console.log(`✅ Reset is_logged_in and session IDs for ${resetResult.affectedRows} user(s) on server restart`);
       }
     } catch (resetError: any) {
-      // Gracefully handle if column doesn't exist yet
-      console.warn('⚠️ Could not reset is_logged_in flags (column may not exist):', resetError.code || resetError.message);
+      // Gracefully handle if columns don't exist yet - try basic approach
+      console.warn('⚠️ Could not reset session tracking (columns may not exist):', resetError.code || resetError.message);
+      try {
+        const basicResetResult = await database.query(
+          'UPDATE users SET is_logged_in = FALSE WHERE is_logged_in = TRUE'
+        );
+        if (basicResetResult.affectedRows > 0) {
+          console.log(`✅ Reset is_logged_in for ${basicResetResult.affectedRows} user(s) (basic mode)`);
+        }
+      } catch (basicError: any) {
+        console.warn('⚠️ Could not reset is_logged_in flags:', basicError.code || basicError.message);
+      }
       console.warn('⚠️ Run migration: add_is_logged_in_column.sql');
     }
 

@@ -77,21 +77,31 @@ router.post('/login', async (req, res) => {
       });
     }
 
-    // ✅ SIMPLE ONE-SESSION-PER-USER: Set is_logged_in = TRUE for this user
-    // This automatically replaces any previous session (if user was already logged in elsewhere)
-    try {
-      await database.query(
-        'UPDATE users SET is_logged_in = TRUE WHERE id = ?',
-        [user.id]
-      );
-      console.log(`✅ Set is_logged_in = TRUE for user ${user.id} (any previous session is now invalid)`);
-    } catch (loginError: any) {
-      // Gracefully handle if column doesn't exist yet
-      console.warn('⚠️ Could not set is_logged_in flag (column may not exist):', loginError.code || loginError.message);
-    }
-
     // Generate unique session identifier for this login
     const sessionId = crypto.randomUUID();
+
+    // ✅ SIMPLE ONE-SESSION-PER-USER: Set is_logged_in = TRUE and store current_session_id
+    // This automatically invalidates any previous session (old tokens will be rejected)
+    try {
+      await database.query(
+        'UPDATE users SET is_logged_in = TRUE, current_session_id = ? WHERE id = ?',
+        [sessionId, user.id]
+      );
+      console.log(`✅ Set is_logged_in = TRUE and current_session_id for user ${user.id}`);
+      console.log(`   Any previous session is now invalid`);
+    } catch (loginError: any) {
+      // Gracefully handle if columns don't exist yet - fall back to basic approach
+      console.warn('⚠️ Could not set session tracking (columns may not exist):', loginError.code || loginError.message);
+      try {
+        await database.query(
+          'UPDATE users SET is_logged_in = TRUE WHERE id = ?',
+          [user.id]
+        );
+        console.log(`✅ Set is_logged_in = TRUE for user ${user.id} (basic mode)`);
+      } catch (basicError: any) {
+        console.warn('⚠️ Could not set is_logged_in flag:', basicError.code || basicError.message);
+      }
+    }
 
     // Generate JWT token with session ID embedded
     const token = jwt.sign(
@@ -387,16 +397,25 @@ router.post('/logout', async (req, res) => {
         
         console.log(`🔐 Logout for user ${userId}, session ${sessionId?.substring(0, 12)}...`);
         
-        // ✅ SIMPLE ONE-SESSION-PER-USER: Set is_logged_in = FALSE for this user
+        // ✅ SIMPLE ONE-SESSION-PER-USER: Set is_logged_in = FALSE and clear current_session_id
         try {
           await database.query(
-            'UPDATE users SET is_logged_in = FALSE WHERE id = ?',
+            'UPDATE users SET is_logged_in = FALSE, current_session_id = NULL WHERE id = ?',
             [userId]
           );
-          console.log(`✅ Set is_logged_in = FALSE for user ${userId}`);
+          console.log(`✅ Set is_logged_in = FALSE and cleared session ID for user ${userId}`);
         } catch (logoutError: any) {
-          // Gracefully handle if column doesn't exist yet
-          console.warn('⚠️ Could not set is_logged_in flag (column may not exist):', logoutError.code || logoutError.message);
+          // Gracefully handle if columns don't exist yet - fall back to basic approach
+          console.warn('⚠️ Could not clear session tracking (columns may not exist):', logoutError.code || logoutError.message);
+          try {
+            await database.query(
+              'UPDATE users SET is_logged_in = FALSE WHERE id = ?',
+              [userId]
+            );
+            console.log(`✅ Set is_logged_in = FALSE for user ${userId} (basic mode)`);
+          } catch (basicError: any) {
+            console.warn('⚠️ Could not set is_logged_in flag:', basicError.code || basicError.message);
+          }
         }
         
       } catch (error) {

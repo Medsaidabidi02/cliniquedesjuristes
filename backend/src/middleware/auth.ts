@@ -40,9 +40,9 @@ export const authenticateToken = async (req: AuthRequest, res: Response, next: N
     const decoded = jwt.verify(token, JWT_SECRET) as any;
     console.log(`🔍 Token decoded for user ${decoded.id}`);
 
-    // ✅ SIMPLE ONE-SESSION-PER-USER: Validate user exists, is approved, and is_logged_in = TRUE
+    // ✅ SIMPLE ONE-SESSION-PER-USER: Validate user exists, is approved, is_logged_in, and session matches
     const result = await database.query(
-      'SELECT id, email, is_admin, is_approved, is_logged_in FROM users WHERE id = ?', 
+      'SELECT id, email, is_admin, is_approved, is_logged_in, current_session_id FROM users WHERE id = ?', 
       [decoded.id]
     );
     
@@ -59,19 +59,30 @@ export const authenticateToken = async (req: AuthRequest, res: Response, next: N
     }
 
     // Check if user is still logged in (simple one-session enforcement)
-    try {
-      if (user.is_logged_in !== undefined && !user.is_logged_in) {
-        console.warn(`❌ User ${decoded.id} is not logged in (logged in elsewhere or logged out)`);
+    if (user.is_logged_in !== undefined && !user.is_logged_in) {
+      console.warn(`❌ User ${decoded.id} is not logged in (logged out)`);
+      return res.status(401).json({ 
+        error: 'Session expired - logged out',
+        sessionExpired: true,
+        loggedInElsewhere: false
+      });
+    }
+
+    // Check if session ID matches (ensures only one session is valid)
+    if (user.current_session_id !== undefined) {
+      if (user.current_session_id !== decoded.sessionId) {
+        console.warn(`❌ User ${decoded.id} session mismatch (logged in elsewhere)`);
+        console.warn(`   Expected: ${user.current_session_id?.substring(0, 12)}..., Got: ${decoded.sessionId?.substring(0, 12)}...`);
         return res.status(401).json({ 
-          error: 'Session expired - logged in from another device or logged out',
+          error: 'Session expired - logged in from another device',
           sessionExpired: true,
           loggedInElsewhere: true
         });
       }
-      console.log(`✅ User ${decoded.id} is_logged_in check passed`);
-    } catch (loginCheckError: any) {
-      // Gracefully handle if column doesn't exist yet
-      console.warn('⚠️ Could not check is_logged_in flag (column may not exist):', loginCheckError.code || loginCheckError.message);
+      console.log(`✅ User ${decoded.id} session ID matches - authenticated`);
+    } else {
+      // Fallback for databases without current_session_id column
+      console.log(`✅ User ${decoded.id} is_logged_in check passed (basic mode)`);
     }
 
     // Attach complete user info to request for downstream handlers
