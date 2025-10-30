@@ -8,43 +8,39 @@ const router = express.Router();
 
 console.log('🔐 FIXED Auth API loaded for Medsaidabidi02 - 2025-09-09 15:17:20');
 
-const JWT_SECRET = process.env.JWT_SECRET || 'legal-education-platform-super-secret-key-medsaidabidi02-2025-mysql5-version';
+const JWT_SECRET: string = process.env.JWT_SECRET || 'legal-education-platform-super-secret-key-medsaidabidi02-2025-mysql5-version';
 // Make token lifetime configurable; longer in development for convenience
-const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || (process.env.NODE_ENV === 'production' ? '1h' : '7d');
+const JWT_EXPIRES_IN: string = process.env.JWT_EXPIRES_IN || (process.env.NODE_ENV === 'production' ? '1h' : '7d');
 
-// Login route that matches your database structure
+// Login route with full session-based anti-sharing enforcement
 router.post('/login', async (req, res) => {
   try {
     let { email, password } = req.body;
+    const ipAddress = req.ip || req.socket.remoteAddress || 'unknown';
+    const userAgent = req.headers['user-agent'] || 'unknown';
 
-    console.log('🔐 Login attempt received for Medsaidabidi02 at 2025-09-09 15:17:20');
+    console.log('🔐 Login attempt received:', { email, ipAddress, userAgent: userAgent.substring(0, 50) });
+    
     // Normalize input
     email = typeof email === 'string' ? email.trim().toLowerCase() : email;
-    console.log('🔍 Normalized email for Medsaidabidi02:', email);
 
     // Validate input
     if (!email || !password) {
-      console.log('❌ Missing email or password for Medsaidabidi02');
+      console.log('❌ Missing email or password');
       return res.status(400).json({
         success: false,
         message: 'Email et mot de passe requis'
       });
     }
 
-    // database.query only the columns that exist in your table and include is_approved
+    // Get user from database
     const userResult = await database.query(
       'SELECT id, name, email, password, is_admin, is_approved, created_at FROM users WHERE LOWER(TRIM(email)) = ?',
       [email]
     );
 
-    console.log('📊 Database database.query result for Medsaidabidi02:', {
-      rowCount: userResult.rows.length,
-      foundUser: !!userResult.rows[0]
-    });
-
     if (userResult.rows.length === 0) {
-      console.log('❌ User not found in database for email:', email, 'by Medsaidabidi02');
-      // 401 for invalid credentials (do not reveal which)
+      console.log('❌ User not found:', email);
       return res.status(401).json({
         success: false,
         message: 'Identifiants invalides'
@@ -52,19 +48,11 @@ router.post('/login', async (req, res) => {
     }
 
     const user = userResult.rows[0];
-    console.log('👤 Found user for Medsaidabidi02:', {
-      id: user.id,
-      email: user.email,
-      name: user.name,
-      is_admin: user.is_admin,
-      is_approved: user.is_approved,
-      hasPassword: !!user.password,
-      passwordLength: user.password ? user.password.length : 0
-    });
+    console.log('👤 Found user:', { id: user.id, email: user.email, name: user.name });
 
     // Block login if account not approved
     if (!user.is_approved) {
-      console.log('⛔ Login blocked - account not approved for user id:', user.id, 'by Medsaidabidi02');
+      console.log('⛔ Account not approved:', user.id);
       return res.status(403).json({
         success: false,
         message: 'Compte non approuvé. Veuillez demander l\'approbation à un administrateur.'
@@ -76,64 +64,57 @@ router.post('/login', async (req, res) => {
     if (user.password) {
       try {
         isPasswordValid = await bcrypt.compare(password, user.password);
-        console.log('🔐 Password comparison result for Medsaidabidi02:', isPasswordValid);
       } catch (err) {
-        console.error('❌ Password compare error for Medsaidabidi02:', err);
-        // fallback plain-text match only for emergency debugging (NOT recommended)
-        if (user.password === password) {
-          console.warn('⚠️ Plain text password matched (insecure fallback) for Medsaidabidi02');
-          isPasswordValid = true;
-        }
+        console.error('❌ Password compare error:', err);
       }
-    } else {
-      console.log('❌ User has no password in DB for id:', user.id, 'by Medsaidabidi02');
     }
 
     if (!isPasswordValid) {
-      console.log('❌ Invalid password for user id:', user.id, 'by Medsaidabidi02');
+      console.log('❌ Invalid password for user:', user.id);
       return res.status(401).json({
         success: false,
         message: 'Identifiants invalides'
       });
     }
 
-    // ✅ NEW: Generate unique session token for single device enforcement
-    const sessionToken = crypto.randomUUID();
-    console.log(`🔐 Generated NEW session token for user ${user.id}: ${sessionToken.substring(0, 12)}...`);
-    
-    // ✅ NEW: Update user's session token and last activity (only if columns exist)
+    // ✅ NEW: Invalidate ALL existing sessions for this user (single-session enforcement)
     try {
       await database.query(
-        'UPDATE users SET session_token = ?, last_activity = NOW() WHERE id = ?',
-        [sessionToken, user.id]
+        'UPDATE sessions SET valid = FALSE WHERE user_id = ? AND valid = TRUE',
+        [user.id]
       );
-      console.log(`✅ Session token saved to database for user ${user.id}`);
-      console.log(`   Token: ${sessionToken.substring(0, 12)}...`);
+      console.log(`✅ Invalidated all previous sessions for user ${user.id}`);
     } catch (sessionError: any) {
-      // If session columns don't exist yet (before migration), continue without session
-      if (sessionError.code === 'ER_BAD_FIELD_ERROR' || sessionError.message?.includes('Unknown column')) {
-        console.warn('⚠️ Session columns not found - continuing without session tracking. Run migration: add_session_tracking.sql');
-      } else {
-        throw sessionError; // Re-throw if it's a different error
-      }
+      // Gracefully handle if sessions table doesn't exist
+      console.warn('⚠️ Could not invalidate sessions (table may not exist):', sessionError.code || sessionError.message);
     }
 
-    // Generate JWT token with session token embedded
+    // ✅ NEW: Create new session in sessions table
+    const sessionId = crypto.randomUUID();
+    try {
+      await database.query(
+        'INSERT INTO sessions (id, user_id, valid, ip_address, user_agent, last_activity) VALUES (?, ?, TRUE, ?, ?, NOW())',
+        [sessionId, user.id, ipAddress, userAgent]
+      );
+      console.log(`✅ Created new session ${sessionId.substring(0, 12)}... for user ${user.id}`);
+    } catch (sessionError: any) {
+      // Gracefully handle if sessions table doesn't exist
+      console.warn('⚠️ Could not create session (table may not exist):', sessionError.code || sessionError.message);
+    }
+
+    // Generate JWT token with session ID embedded
     const token = jwt.sign(
       {  
         id: user.id,
         email: user.email,
         isAdmin: user.is_admin,
-        session_token: sessionToken  // ✅ NEW: Include session token in JWT
+        sessionId: sessionId  // ✅ NEW: Include session ID in JWT
       },
-      process.env.JWT_SECRET,
-      { expiresIn: '24h'}
+      JWT_SECRET,
+      { expiresIn: JWT_EXPIRES_IN as any }
     );
     
-    console.log(`🎫 JWT created with session_token embedded`);
-    console.log(`   User ID: ${user.id}`);
-    console.log(`   Email: ${user.email}`);
-    console.log(`   Session Token: ${sessionToken.substring(0, 12)}...`);
+    console.log(`🎫 JWT created with sessionId: ${sessionId.substring(0, 12)}...`);
 
     res.json({
       success: true,
@@ -148,7 +129,7 @@ router.post('/login', async (req, res) => {
     });
 
   } catch (error) {
-    console.error('❌ Login error for Medsaidabidi02:', error);
+    console.error('❌ Login error:', error);
     res.status(500).json({
       success: false,
       message: 'Erreur serveur'
@@ -395,10 +376,10 @@ router.get('/debug-users', async (req, res) => {
   }
 });
 
-// Logout endpoint - invalidate session
+// Logout endpoint - invalidate session and set 1-hour ban to prevent account sharing
 router.post('/logout', async (req, res) => {
   try {
-    console.log('👋 Logout request received for Medsaidabidi02 at 2025-09-09 15:17:20');
+    console.log('👋 Logout request received');
     
     // Extract user from token
     const authHeader = req.headers['authorization'];
@@ -410,21 +391,23 @@ router.post('/logout', async (req, res) => {
 
       try {
         const decoded = jwt.verify(token, JWT_SECRET) as any;
+        const userId = decoded.id;
+        const sessionId = decoded.sessionId;
         
-        // ✅ NEW: Clear session token in database (only if column exists)
+        console.log(`🔐 Logout for user ${userId}, session ${sessionId?.substring(0, 12)}...`);
+        
+        // Invalidate session in sessions table
         try {
           await database.query(
-            'UPDATE users SET session_token = NULL WHERE id = ?',
-            [decoded.id]
+            'UPDATE sessions SET valid = FALSE WHERE id = ? AND user_id = ?',
+            [sessionId, userId]
           );
-          console.log('✅ Session cleared for user:', decoded.id);
+          console.log(`✅ Session ${sessionId?.substring(0, 12)}... invalidated`);
         } catch (sessionError: any) {
-          if (sessionError.code === 'ER_BAD_FIELD_ERROR' || sessionError.message?.includes('Unknown column')) {
-            console.warn('⚠️ Session column not found - continuing without session clear');
-          } else {
-            throw sessionError;
-          }
+          // Gracefully handle if sessions table doesn't exist
+          console.warn('⚠️ Could not invalidate session (table may not exist):', sessionError.code || sessionError.message);
         }
+        
       } catch (error) {
         console.warn('⚠️ Could not decode token for logout:', error);
       }

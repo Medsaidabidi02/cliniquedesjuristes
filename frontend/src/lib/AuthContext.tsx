@@ -1,6 +1,7 @@
 import React, { createContext, useState, useEffect, useContext, ReactNode } from 'react';
 import { authService, User as AuthUser } from './auth';
 import { apiUtils, getErrorMessage } from './api';
+import { initOneTabPolicy, stopOneTabPolicy } from './oneTabPolicy';
 
 type User = AuthUser;
 
@@ -9,7 +10,7 @@ interface AuthContextType {
   loading: boolean;
   error: string | null;
   login: (email: string, password: string) => Promise<User>;
-  logout: () => void;
+  logout: () => Promise<void>;
   isAuthenticated: boolean;
 }
 
@@ -32,6 +33,23 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => apiUtils.isAuthenticated());
+
+  // ✅ NEW: Initialize one-tab policy when authenticated
+  useEffect(() => {
+    if (isAuthenticated && user) {
+      console.log('🔒 Starting one-tab policy for authenticated user');
+      
+      // Initialize one-tab policy (no longer logs out, just shows message)
+      initOneTabPolicy();
+      
+      return () => {
+        console.log('🔓 Stopping one-tab policy');
+        stopOneTabPolicy();
+      };
+    }
+    
+    return undefined;
+  }, [isAuthenticated, user]);
 
   useEffect(() => {
     const initAuth = async () => {
@@ -138,11 +156,17 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     }
   };
 
-  const logout = () => {
+  const logout = async () => {
     try {
+      // ✅ NEW: Stop one-tab policy before logout
+      stopOneTabPolicy();
+      
+      // ✅ NEW: Call backend logout endpoint
+      await authService.logout();
+      
       apiUtils.removeAuthToken();
     } catch (e) {
-      console.warn('Error clearing auth token:', e);
+      console.warn('Error during logout:', e);
     }
     setUser(null);
     setIsAuthenticated(false);
