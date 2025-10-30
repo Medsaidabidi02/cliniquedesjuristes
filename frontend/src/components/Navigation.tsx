@@ -177,12 +177,6 @@ const Navigation: React.FC = () => {
                 >
                   Connexion
                 </Link>
-                <Link
-                  to="/register"
-                  className="px-6 py-2 bg-gradient-to-r from-blue-500 to-purple-600 text-white rounded-lg font-medium hover:from-blue-600 hover:to-purple-700 transform hover:scale-105 transition-all duration-300 shadow-lg hover:shadow-xl"
-                >
-                  Inscription
-                </Link>
               </div>
             )}
 

@@ -103,19 +103,5 @@ export const authService = {
       apiUtils.removeAuthToken();
       return null;
     }
-  },
-
-  // Register user
-  async register(userData: { name: string; email: string; password: string }): Promise<{ success: boolean; message: string }> {
-    try {
-      const response = await api.post<{ success: boolean; message: string }>('/auth/register', userData);
-      return {
-        success: response.success,
-        message: response.message || 'Registration successful'
-      };
-    } catch (error) {
-      console.error('❌ Registration error:', error);
-      throw error;
-    }
   }
 };
