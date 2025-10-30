@@ -16,6 +16,7 @@ import {
   getActiveUserSessions,
   invalidateSession
 } from '../services/sessionManager';
+import { loginRateLimiter, sessionPingRateLimiter } from '../middleware/rateLimiter';
 
 const router = express.Router();
 
@@ -26,7 +27,7 @@ const JWT_SECRET: string = process.env.JWT_SECRET || 'legal-education-platform-s
 const JWT_EXPIRES_IN: string = process.env.JWT_EXPIRES_IN || (process.env.NODE_ENV === 'production' ? '1h' : '7d');
 
 // Login route with progressive cooldown and device tracking
-router.post('/login', async (req, res) => {
+router.post('/login', loginRateLimiter, async (req, res) => {
   try {
     let { email, password, deviceFingerprint: clientDeviceFingerprint } = req.body;
     const ipAddress = req.ip || req.socket.remoteAddress || 'unknown';
@@ -532,7 +533,7 @@ router.post('/logout', async (req, res) => {
 });
 
 // Session ping endpoint - for background health checks
-router.post('/session/ping', async (req, res) => {
+router.post('/session/ping', sessionPingRateLimiter, async (req, res) => {
   try {
     const authHeader = req.headers['authorization'];
     if (!authHeader) {
