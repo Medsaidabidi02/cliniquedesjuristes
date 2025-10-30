@@ -2,43 +2,52 @@
 
 ## Overview
 
-This document explains the **simple** one-session-per-user system implemented in the Clinique des Juristes platform. This system uses a minimal, database-driven approach with just a single boolean flag.
+This document explains the **simple** one-session-per-user system implemented in the Clinique des Juristes platform. This system uses a minimal, database-driven approach with just two columns in the users table.
 
 ## Key Features
 
 ### ✅ One Active Session per User
 - Each user can only be logged in **once at a time**
 - When a user logs in from a new browser/device, the previous session automatically becomes invalid
-- No complex session tables or token management needed
+- Old tokens are immediately rejected - no complex session tables needed
 
 ### ✅ Automatic Session Replacement
 - If a user is already logged in and logs in again from another device, the old session is automatically replaced
-- The old session will receive an error on the next API request
+- The old session will receive "logged in from another device" error on the next API request
+- Old tokens become invalid immediately
 
 ### ✅ Clean Logout
-- When a user logs out, their `is_logged_in` flag is set to `FALSE`
+- When a user logs out, their `is_logged_in` flag is set to `FALSE` and session ID is cleared
 - Next login will work normally (no login bans by default)
 
 ### ✅ Server Restart Handling
 - All `is_logged_in` flags are automatically reset to `FALSE` on server restart
+- All session IDs are cleared on server restart
 - This handles cases where users closed their browser without logging out
 
 ## Database Schema
 
-### Users Table - New Column
+### Users Table - New Columns
 
 ```sql
+-- Add the is_logged_in flag
 ALTER TABLE users ADD COLUMN is_logged_in BOOLEAN DEFAULT FALSE;
+
+-- Add the current_session_id to track which session is valid
+ALTER TABLE users ADD COLUMN current_session_id VARCHAR(255) DEFAULT NULL;
+
+-- Add indexes for performance
 CREATE INDEX idx_is_logged_in ON users(is_logged_in);
+CREATE INDEX idx_current_session_id ON users(current_session_id);
 ```
 
-That's it! Just **one column** added to the existing `users` table.
+That's it! Just **two columns** added to the existing `users` table. No separate session tables or complex schemas.
 
 ## Installation Steps
 
 ### 1. Run Database Migration
 
-Execute the SQL migration to add the `is_logged_in` column:
+Execute the SQL migration to add the required columns:
 
 ```bash
 # Connect to your MySQL database and run:
@@ -73,18 +82,24 @@ On startup, the server will automatically reset all `is_logged_in` flags to ensu
    - Checks email and password
    - Verifies user is approved
 
-3. **Backend sets is_logged_in = TRUE**
+3. **Backend generates unique session ID**
+   - Creates a new UUID for this login session
+
+4. **Backend updates database**
    ```sql
-   UPDATE users SET is_logged_in = TRUE WHERE id = ?
+   UPDATE users 
+   SET is_logged_in = TRUE, current_session_id = ? 
+   WHERE id = ?
    ```
    - If user was already logged in elsewhere, this replaces that session
+   - Old tokens with different session IDs will be rejected
    - Simple and atomic operation
 
-4. **Backend generates JWT**
-   - Includes unique `sessionId` in token payload (for tracking)
+5. **Backend generates JWT**
+   - Includes unique `sessionId` in token payload
    - Returns token to frontend
 
-5. **Frontend stores token**
+6. **Frontend stores token**
    - Saves token to localStorage
    - Uses token for all subsequent API requests
 
@@ -96,16 +111,19 @@ On startup, the server will automatically reset all `is_logged_in` flags to ensu
    ```
 
 2. **Backend middleware validates JWT**
-   - Decodes token to get user ID
+   - Decodes token to get user ID and session ID
    - Queries database:
      ```sql
-     SELECT id, email, is_admin, is_approved, is_logged_in 
+     SELECT id, email, is_admin, is_approved, is_logged_in, current_session_id 
      FROM users WHERE id = ?
      ```
 
-3. **Backend checks is_logged_in flag**
-   - If `is_logged_in = FALSE` → `401 Session expired (logged in elsewhere)`
-   - If `is_logged_in = TRUE` → Allow request to continue
+3. **Backend performs two checks**
+   - **Check 1**: Is `is_logged_in = TRUE`?
+     - If FALSE → `401 Session expired (logged out)`
+   - **Check 2**: Does `current_session_id` match token's `sessionId`?
+     - If NO MATCH → `401 Session expired (logged in elsewhere)`
+     - If MATCH → Allow request to continue
 
 ### Logout Flow
 
@@ -114,9 +132,11 @@ On startup, the server will automatically reset all `is_logged_in` flags to ensu
    POST /api/auth/logout
    ```
 
-2. **Backend sets is_logged_in = FALSE**
+2. **Backend clears session**
    ```sql
-   UPDATE users SET is_logged_in = FALSE WHERE id = ?
+   UPDATE users 
+   SET is_logged_in = FALSE, current_session_id = NULL 
+   WHERE id = ?
    ```
 
 3. **Frontend clears auth data**
@@ -127,13 +147,39 @@ On startup, the server will automatically reset all `is_logged_in` flags to ensu
 
 1. **Server starts up**
 
-2. **Reset all is_logged_in flags**
+2. **Reset all session flags**
    ```sql
-   UPDATE users SET is_logged_in = FALSE WHERE is_logged_in = TRUE
+   UPDATE users 
+   SET is_logged_in = FALSE, current_session_id = NULL 
+   WHERE is_logged_in = TRUE
    ```
 
 3. **Log the number of users reset**
-   - Shows in console: "Reset is_logged_in flag for X user(s)"
+   - Shows in console: "Reset is_logged_in and session IDs for X user(s)"
+
+### Concurrent Login Flow (Session Replacement)
+
+**Scenario**: User A logs in on Device 1, then logs in on Device 2
+
+1. **Device 1**: User logs in
+   - Database: `is_logged_in = TRUE, current_session_id = "abc-123"`
+   - Device 1 has token with `sessionId = "abc-123"`
+
+2. **Device 2**: Same user logs in again
+   - Database: `is_logged_in = TRUE, current_session_id = "xyz-789"` (NEW)
+   - Device 2 has token with `sessionId = "xyz-789"`
+
+3. **Device 1**: Tries to make API request
+   - Token has `sessionId = "abc-123"`
+   - Database has `current_session_id = "xyz-789"`
+   - Check fails: "abc-123" ≠ "xyz-789"
+   - Response: `401 Session expired - logged in from another device`
+
+4. **Device 2**: Makes API request
+   - Token has `sessionId = "xyz-789"`
+   - Database has `current_session_id = "xyz-789"`
+   - Check succeeds: "xyz-789" = "xyz-789"
+   - Request allowed ✅
 
 ## Testing
 
@@ -158,7 +204,7 @@ On startup, the server will automatically reset all `is_logged_in` flags to ensu
 1. Log in as User A and User B
 2. Stop the server (without users logging out)
 3. Restart the server
-4. **Expected**: Console shows "Reset is_logged_in flag for 2 user(s)"
+4. **Expected**: Console shows "Reset is_logged_in and session IDs for 2 user(s)"
 5. Try to use the old tokens
 6. **Expected**: Both users receive "Session expired" errors
 7. Both users can log in again normally
@@ -214,7 +260,7 @@ JWT tokens still expire based on `JWT_EXPIRES_IN` environment variable:
 - Production: 1 hour (default)
 - Development: 7 days (default)
 
-However, even with a valid token, the `is_logged_in` flag must also be TRUE.
+However, even with a valid token, the `is_logged_in` flag must be TRUE and the `current_session_id` must match.
 
 ## Configuration
 
@@ -235,7 +281,7 @@ If you want to add a simple cooldown after logout (to further prevent sharing), 
 ALTER TABLE users ADD COLUMN last_logout TIMESTAMP NULL;
 
 -- On logout:
-UPDATE users SET is_logged_in = FALSE, last_logout = NOW() WHERE id = ?
+UPDATE users SET is_logged_in = FALSE, current_session_id = NULL, last_logout = NOW() WHERE id = ?
 
 -- On login, check:
 SELECT 
@@ -251,7 +297,7 @@ But this is **optional** and not included in the base simple system.
 
 ### "Session expired" errors immediately after login
 
-**Cause:** The `is_logged_in` column doesn't exist yet
+**Cause:** The required columns don't exist yet
 
 **Fix:** 
 1. Run the migration: `add_is_logged_in_column.sql`
@@ -266,15 +312,15 @@ But this is **optional** and not included in the base simple system.
 
 ### Old complex session system still active
 
-**Cause:** Both systems are running (graceful fallback)
+**Cause:** Both systems can coexist gracefully
 
-**Fix:** The code gracefully handles both. If `is_logged_in` column exists, it uses the simple system. The old session system code remains for backward compatibility but won't interfere.
+**Fix:** The code gracefully handles both. If `is_logged_in` and `current_session_id` columns exist, it uses the simple system. The old session system code remains for backward compatibility but won't interfere.
 
 ## API Reference
 
 ### POST /api/auth/login
 
-Login and set `is_logged_in = TRUE`.
+Login, set `is_logged_in = TRUE`, and store `current_session_id`.
 
 **Request:**
 ```json
@@ -308,7 +354,7 @@ Login and set `is_logged_in = TRUE`.
 
 ### POST /api/auth/logout
 
-Logout and set `is_logged_in = FALSE`.
+Logout, set `is_logged_in = FALSE`, and clear `current_session_id`.
 
 **Headers:**
 ```
@@ -339,12 +385,13 @@ Authorization: Bearer <token>
 ### Check Currently Logged In Users
 
 ```sql
--- See all users currently logged in
+-- See all users currently logged in with their session IDs
 SELECT 
   id,
   email,
   name,
   is_logged_in,
+  current_session_id,
   updated_at as last_activity
 FROM users
 WHERE is_logged_in = TRUE
@@ -368,6 +415,7 @@ SELECT
   id,
   email,
   name,
+  current_session_id,
   TIMESTAMPDIFF(HOUR, updated_at, NOW()) as hours_since_update
 FROM users
 WHERE is_logged_in = TRUE
@@ -379,7 +427,7 @@ ORDER BY updated_at;
 For issues or questions:
 1. Check the troubleshooting section above
 2. Review backend logs for error messages
-3. Verify the `is_logged_in` column was added correctly:
+3. Verify the columns were added correctly:
    ```sql
    DESCRIBE users;
    ```
@@ -387,14 +435,15 @@ For issues or questions:
 
 ## Advantages of This Simple Approach
 
-1. **Easy to Understand** - Just one boolean flag, no complex state
-2. **Minimal Database Changes** - Only one column added
+1. **Easy to Understand** - Just two columns, no complex state
+2. **Minimal Database Changes** - Only two columns added
 3. **No Maintenance Needed** - No session cleanup, no expired records
 4. **Reliable** - Database-driven, not dependent on memory or cache
 5. **Atomic Operations** - Simple UPDATE queries, no race conditions
 6. **Auto-Recovery** - Server restart cleans up all stale sessions
-7. **Easy to Debug** - Just check one column in users table
+7. **Easy to Debug** - Just check two columns in users table
 8. **No External Dependencies** - Works with existing MySQL database
+9. **Immediate Invalidation** - Old sessions rejected immediately, not on next JWT expiry
 
 ## Migration from Complex System
 
@@ -408,7 +457,7 @@ If you were using the previous complex session system:
 
 The simple system is recommended for most use cases unless you specifically need:
 - Login bans after logout
-- Detailed session tracking (IP, user agent)
+- Detailed session tracking (IP, user agent, last activity)
 - One-tab enforcement within same device
 
-For the basic requirement of "one user, one session", the simple `is_logged_in` flag is the cleanest solution.
+For the basic requirement of "one user, one session", the simple `is_logged_in` + `current_session_id` approach is the cleanest solution.
