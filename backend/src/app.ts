@@ -12,6 +12,7 @@ import { blogRoutes } from './routes/blog';
 import { videoRoutes } from './routes/videos';
 import { coursesRoutes } from './routes/courses';
 import { subjectsRoutes } from './routes/subjects';
+import adminSessionsRoutes from './routes/adminSessions';
 
 
 
@@ -169,6 +170,10 @@ console.log('✅ User routes configured: /api/users');
 
 app.use('/api/user-courses', userCoursesRoutes);
 console.log('✅ User-courses routes configured: /api/user-courses');
+
+// Admin session management routes
+app.use('/api/admin/sessions', adminSessionsRoutes);
+console.log('✅ Admin session routes configured: /api/admin/sessions');
 
 // Debug routes last (usually admin only)
 app.use('/api/debug', debugRoutes);
