@@ -96,38 +96,53 @@ router.post('/login', loginLimiter, async (req, res) => {
       });
     }
 
-    // ✅ NEW: Check for active sessions (single session enforcement)
-    try {
-      const activeSessionResult = await database.query(
-        'SELECT id, ip_address, user_agent, created_at, last_activity FROM sessions WHERE user_id = ? AND valid = TRUE',
-        [user.id]
-      );
-      
-      if (activeSessionResult.rows.length > 0) {
-        const activeSession = activeSessionResult.rows[0];
-        console.log(`⚠️ User ${user.id} already has an active session from ${activeSession.ip_address}`);
+    // ✅ ADMIN BYPASS: Admins can login without session restrictions
+    if (user.is_admin) {
+      console.log(`👑 Admin user ${user.id} - bypassing session restrictions`);
+      // Invalidate any existing sessions for admin (allow fresh login)
+      try {
+        await database.query(
+          'UPDATE sessions SET valid = FALSE WHERE user_id = ?',
+          [user.id]
+        );
+        console.log(`✅ Invalidated old admin sessions for user ${user.id}`);
+      } catch (err) {
+        console.warn('⚠️ Could not invalidate old admin sessions:', err);
+      }
+      // Skip session enforcement for admins - continue to create new session below
+    } else {
+      // ✅ NEW: Check for active sessions (single session enforcement for non-admin users)
+      try {
+        const activeSessionResult = await database.query(
+          'SELECT id, ip_address, user_agent, created_at, last_activity FROM sessions WHERE user_id = ? AND valid = TRUE',
+          [user.id]
+        );
         
-        // Check if session is stale (inactive for more than 24 hours or no last_activity)
-        const lastActivity = activeSession.last_activity ? new Date(activeSession.last_activity) : new Date(activeSession.created_at);
-        const hoursSinceActivity = (new Date().getTime() - lastActivity.getTime()) / (1000 * 60 * 60);
-        const isStaleSession = hoursSinceActivity > 24;
-        
-        // Check if this is the same device (same IP + user agent)
-        const isSameDevice = activeSession.ip_address === ipAddress && 
-                            activeSession.user_agent === userAgent;
-        
-        if (isSameDevice || isStaleSession) {
-          if (isStaleSession) {
-            console.log(`✅ Stale session detected (${hoursSinceActivity.toFixed(1)}h old), allowing login and invalidating old session`);
+        if (activeSessionResult.rows.length > 0) {
+          const activeSession = activeSessionResult.rows[0];
+          console.log(`⚠️ User ${user.id} already has an active session from ${activeSession.ip_address}`);
+          
+          // Check if session is stale (inactive for more than 24 hours or no last_activity)
+          const lastActivity = activeSession.last_activity ? new Date(activeSession.last_activity) : new Date(activeSession.created_at);
+          const hoursSinceActivity = (new Date().getTime() - lastActivity.getTime()) / (1000 * 60 * 60);
+          const isStaleSession = hoursSinceActivity > 24;
+          
+          // Check if this is the same device (same IP + user agent)
+          const isSameDevice = activeSession.ip_address === ipAddress && 
+                              activeSession.user_agent === userAgent;
+          
+          if (isSameDevice || isStaleSession) {
+            if (isStaleSession) {
+              console.log(`✅ Stale session detected (${hoursSinceActivity.toFixed(1)}h old), allowing login and invalidating old session`);
+            } else {
+              console.log(`✅ Same device detected, allowing login and refreshing session`);
+            }
+            // Invalidate old session and continue with new login
+            await database.query(
+              'UPDATE sessions SET valid = FALSE WHERE id = ?',
+              [activeSession.id]
+            );
           } else {
-            console.log(`✅ Same device detected, allowing login and refreshing session`);
-          }
-          // Invalidate old session and continue with new login
-          await database.query(
-            'UPDATE sessions SET valid = FALSE WHERE id = ?',
-            [activeSession.id]
-          );
-        } else {
           // Different device - implement progressive cooldown
           console.log(`🚫 Different device detected - checking cooldown status`);
           
@@ -200,16 +215,17 @@ router.post('/login', loginLimiter, async (req, res) => {
         }
       }
       
-      // Reset attempt count on successful login
+      // Reset attempt count on successful login (non-admin users)
       await database.query(
         'DELETE FROM login_attempts WHERE user_id = ?',
         [user.id]
       );
       
-    } catch (sessionError: any) {
-      // Gracefully handle if tables don't exist
-      console.warn('⚠️ Could not check sessions (table may not exist):', sessionError.code || sessionError.message);
-    }
+      } catch (sessionError: any) {
+        // Gracefully handle if tables don't exist
+        console.warn('⚠️ Could not check sessions (table may not exist):', sessionError.code || sessionError.message);
+      }
+    } // End of non-admin session enforcement
 
     // ✅ Create new session in sessions table
     const sessionId = crypto.randomUUID();
