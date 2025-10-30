@@ -3,21 +3,14 @@ import { authenticateToken, requireAdmin, AuthRequest } from '../middleware/auth
 import { adminRateLimiter } from '../middleware/rateLimiter';
 import {
   getUserSessions,
-  getActiveUserSessions,
   invalidateSession,
-  invalidateUserSessions,
   getSessionStats,
-  cleanupOldSessions,
   cleanupStaleSessions
-} from '../services/sessionManager';
+} from '../services/sessionService';
 import {
-  clearLoginBan,
-  clearDeviceSwitchHistory,
-  getDeviceSwitchHistory,
-  checkLoginBan,
-  cleanupExpiredBans,
-  cleanupOldSwitchRecords
-} from '../services/progressiveCooldown';
+  checkCooldown,
+  resetAttempts
+} from '../services/loginAttempts';
 
 const router = express.Router();
 
@@ -106,7 +99,15 @@ router.post('/invalidate-user/:userId', async (req: AuthRequest, res) => {
       return res.status(400).json({ success: false, message: 'Invalid user ID' });
     }
     
-    const count = await invalidateUserSessions(userId);
+    const sessions = await getUserSessions(userId);
+    let count = 0;
+    
+    for (const session of sessions) {
+      if (session.valid) {
+        await invalidateSession(session.id);
+        count++;
+      }
+    }
     
     console.log(`✅ Admin ${req.user?.id} invalidated ${count} session(s) for user ${userId}`);
     
@@ -123,7 +124,7 @@ router.post('/invalidate-user/:userId', async (req: AuthRequest, res) => {
 
 /**
  * GET /api/admin/sessions/ban/:userId
- * Check ban status for a user
+ * Check cooldown status for a user
  */
 router.get('/ban/:userId', async (req: AuthRequest, res) => {
   try {
@@ -133,22 +134,22 @@ router.get('/ban/:userId', async (req: AuthRequest, res) => {
       return res.status(400).json({ success: false, message: 'Invalid user ID' });
     }
     
-    const banInfo = await checkLoginBan(userId);
+    const cooldownInfo = await checkCooldown(userId);
     
     res.json({
       success: true,
       userId,
-      ...banInfo
+      ...cooldownInfo
     });
   } catch (error) {
-    console.error('❌ Error checking ban:', error);
+    console.error('❌ Error checking cooldown:', error);
     res.status(500).json({ success: false, message: 'Erreur serveur' });
   }
 });
 
 /**
  * DELETE /api/admin/sessions/ban/:userId
- * Clear login ban for a user (admin override)
+ * Clear login attempts for a user (admin override)
  */
 router.delete('/ban/:userId', async (req: AuthRequest, res) => {
   try {
@@ -158,103 +159,34 @@ router.delete('/ban/:userId', async (req: AuthRequest, res) => {
       return res.status(400).json({ success: false, message: 'Invalid user ID' });
     }
     
-    await clearLoginBan(userId);
+    await resetAttempts(userId);
     
-    console.log(`✅ Admin ${req.user?.id} cleared login ban for user ${userId}`);
-    
-    res.json({
-      success: true,
-      message: 'Ban supprimé avec succès'
-    });
-  } catch (error) {
-    console.error('❌ Error clearing ban:', error);
-    res.status(500).json({ success: false, message: 'Erreur serveur' });
-  }
-});
-
-/**
- * GET /api/admin/sessions/device-switches/:userId
- * Get device switch history for a user
- */
-router.get('/device-switches/:userId', async (req: AuthRequest, res) => {
-  try {
-    const userId = parseInt(req.params.userId);
-    const limit = parseInt(req.query.limit as string) || 10;
-    
-    if (isNaN(userId)) {
-      return res.status(400).json({ success: false, message: 'Invalid user ID' });
-    }
-    
-    const switches = await getDeviceSwitchHistory(userId, limit);
+    console.log(`✅ Admin ${req.user?.id} cleared login attempts for user ${userId}`);
     
     res.json({
       success: true,
-      userId,
-      switches,
-      count: switches.length
+      message: 'Tentatives de connexion réinitialisées avec succès'
     });
   } catch (error) {
-    console.error('❌ Error getting device switches:', error);
-    res.status(500).json({ success: false, message: 'Erreur serveur' });
-  }
-});
-
-/**
- * DELETE /api/admin/sessions/device-switches/:userId
- * Clear device switch history for a user (admin override)
- */
-router.delete('/device-switches/:userId', async (req: AuthRequest, res) => {
-  try {
-    const userId = parseInt(req.params.userId);
-    
-    if (isNaN(userId)) {
-      return res.status(400).json({ success: false, message: 'Invalid user ID' });
-    }
-    
-    await clearDeviceSwitchHistory(userId);
-    
-    console.log(`✅ Admin ${req.user?.id} cleared device switch history for user ${userId}`);
-    
-    res.json({
-      success: true,
-      message: 'Historique des changements d\'appareils supprimé avec succès'
-    });
-  } catch (error) {
-    console.error('❌ Error clearing device switches:', error);
+    console.error('❌ Error clearing attempts:', error);
     res.status(500).json({ success: false, message: 'Erreur serveur' });
   }
 });
 
 /**
  * POST /api/admin/sessions/cleanup
- * Run cleanup tasks (remove old sessions, expired bans, etc.)
+ * Run cleanup tasks (remove stale sessions)
  */
 router.post('/cleanup', async (req: AuthRequest, res) => {
   try {
     const { 
-      cleanSessions = true, 
-      cleanBans = true, 
-      cleanSwitches = true,
-      cleanStale = true 
+      inactiveMinutes = 30
     } = req.body;
     
     const results: any = {};
     
-    if (cleanSessions) {
-      results.sessionsDeleted = await cleanupOldSessions(30);
-    }
-    
-    if (cleanStale) {
-      results.staleSessionsInvalidated = await cleanupStaleSessions(24);
-    }
-    
-    if (cleanBans) {
-      results.bansDeleted = await cleanupExpiredBans();
-    }
-    
-    if (cleanSwitches) {
-      results.switchesDeleted = await cleanupOldSwitchRecords();
-    }
+    // Clean up stale sessions (inactive for specified minutes)
+    results.staleSessionsInvalidated = await cleanupStaleSessions(inactiveMinutes);
     
     console.log(`✅ Admin ${req.user?.id} ran cleanup tasks:`, results);
     
