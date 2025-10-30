@@ -75,32 +75,24 @@ const LoginPage: React.FC = () => {
     } catch (err: any) {
       console.error('❌ Login error:', err);
       
-      // Check if this is a ban/cooldown error with specific details
+      // Check if this is a session active or cooldown error
       const errorResponse = err?.response?.data;
       
-      // Check if already logged in elsewhere
-      if (errorResponse?.hasActiveSession || errorResponse?.needsLogout) {
-        const activeSessionMessage = `🔐 Vous êtes déjà connecté${errorResponse.ownerLabel ? ` sur: ${errorResponse.ownerLabel}` : ' sur un autre appareil'}. Veuillez vous déconnecter d'abord pour continuer.`;
-        setError(activeSessionMessage);
-      } else if (errorResponse?.isBanned) {
-        const hours = Math.floor((errorResponse.remainingMinutes || 0) / 60);
-        const minutes = (errorResponse.remainingMinutes || 0) % 60;
-        let timeMessage = '';
-        
-        if (hours > 0) {
-          timeMessage = `${hours} heure${hours > 1 ? 's' : ''}`;
-          if (minutes > 0) {
-            timeMessage += ` et ${minutes} minute${minutes > 1 ? 's' : ''}`;
+      // Redirect to session-active page if already logged in or in cooldown
+      if (errorResponse?.hasActiveSession || errorResponse?.inCooldown) {
+        navigate('/session-active', {
+          state: {
+            ownerLabel: errorResponse.ownerLabel,
+            remainingMinutes: errorResponse.remainingMinutes || 0,
+            attemptCount: errorResponse.attemptCount || 0,
+            inCooldown: errorResponse.inCooldown || false
           }
-        } else {
-          timeMessage = `${minutes} minute${minutes > 1 ? 's' : ''}`;
-        }
-        
-        const cooldownMessage = `🚫 Compte temporairement verrouillé suite à plusieurs changements d'appareil. Réessayez dans ${timeMessage}. Cette mesure protège contre le partage de compte.`;
-        setError(cooldownMessage);
-      } else {
-        setError(err instanceof Error ? err.message : t('auth.login.error_default', 'Login failed. Please check your credentials.'));
+        });
+        return;
       }
+      
+      // Handle other errors normally
+      setError(err instanceof Error ? err.message : t('auth.login.error_default', 'Login failed. Please check your credentials.'));
     } finally {
       setLoading(false);
     }

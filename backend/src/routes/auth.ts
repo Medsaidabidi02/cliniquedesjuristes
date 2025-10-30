@@ -4,18 +4,18 @@ import jwt from 'jsonwebtoken';
 import crypto from 'crypto';
 import database from '../config/database';
 import { generateDeviceFingerprint, generateOwnershipLabel, isSameDevice } from '../services/deviceFingerprint';
-import { 
-  checkLoginBan, 
-  setLoginBan, 
-  recordDeviceSwitch, 
-  getDeviceSwitchCount 
-} from '../services/progressiveCooldown';
 import {
   createSession,
   invalidateUserSessions,
   getActiveUserSessions,
   invalidateSession
 } from '../services/sessionManager';
+import {
+  recordLoginAttempt,
+  checkLoginCooldown,
+  applyCooldown,
+  resetLoginAttempts
+} from '../services/loginAttempts';
 import { loginRateLimiter, sessionPingRateLimiter } from '../middleware/rateLimiter';
 
 const router = express.Router();
@@ -91,14 +91,14 @@ router.post('/login', loginRateLimiter, async (req, res) => {
       });
     }
 
-    // Generate device fingerprint EARLY to check for same-device before ban check
+    // Generate device fingerprint for session tracking
     const deviceFingerprint = generateDeviceFingerprint(req, clientDeviceFingerprint);
     const ownerLabel = generateOwnershipLabel(userAgent, ipAddress);
     
     console.log(`📱 Device fingerprint: ${deviceFingerprint.substring(0, 16)}...`);
     console.log(`🏷️ Owner label: ${ownerLabel}`);
 
-    // ✅ Check for existing active sessions (for same-device detection and session blocking)
+    // ✅ Check for existing active sessions
     let isSameDeviceLogin = false;
     let hasActiveSession = false;
     let activeSessionOwnerLabel: string | null = null;
@@ -110,34 +110,49 @@ router.post('/login', loginRateLimiter, async (req, res) => {
         hasActiveSession = true;
         activeSessionOwnerLabel = activeSessions[0].ownerLabel;
         
-        // Check if any active session is from the same device
+        // Check if any active session is from the same device/browser
         for (const session of activeSessions) {
           if (session.deviceFingerprint && isSameDevice(session.deviceFingerprint, deviceFingerprint)) {
             isSameDeviceLogin = true;
-            console.log(`✅ Same device detected - allowing re-login`);
+            console.log(`✅ Same device/browser detected - allowing re-login`);
             break;
           }
         }
         
-        // If different device and active session exists, BLOCK login
+        // If different browser/device and active session exists, BLOCK login and track attempt
         if (!isSameDeviceLogin) {
-          console.log(`🚫 Active session exists - blocking login from different device for user ${user.id}`);
+          console.log(`🚫 Active session exists - blocking login from different browser for user ${user.id}`);
           
-          // Record device switch attempt
-          await recordDeviceSwitch({
-            userId: user.id,
-            fromDeviceFingerprint: activeSessions[0].deviceFingerprint,
-            toDeviceFingerprint: deviceFingerprint,
-            fromIp: activeSessions[0].ipAddress,
-            toIp: ipAddress
-          });
+          // Record the login attempt
+          await recordLoginAttempt(user.id);
           
+          // Check if we need to apply cooldown
+          const cooldownCheck = await checkLoginCooldown(user.id);
+          
+          if (cooldownCheck.attemptCount >= 5) {
+            // Apply cooldown after 5+ attempts
+            const cooldown = await applyCooldown(user.id);
+            
+            return res.status(403).json({
+              success: false,
+              message: `Trop de tentatives. Compte temporairement verrouillé pendant ${cooldown.cooldownMinutes} minutes.`,
+              hasActiveSession: true,
+              ownerLabel: activeSessionOwnerLabel,
+              inCooldown: true,
+              remainingMinutes: cooldown.cooldownMinutes,
+              attemptCount: cooldownCheck.attemptCount,
+              cooldownUntil: cooldown.cooldownUntil
+            });
+          }
+          
+          // Block but no cooldown yet (less than 5 attempts)
           return res.status(409).json({
             success: false,
             message: 'Vous êtes déjà connecté sur un autre appareil. Veuillez vous déconnecter d\'abord.',
             hasActiveSession: true,
             ownerLabel: activeSessionOwnerLabel,
-            needsLogout: true
+            needsLogout: true,
+            attemptCount: cooldownCheck.attemptCount
           });
         }
       }
@@ -145,44 +160,23 @@ router.post('/login', loginRateLimiter, async (req, res) => {
       console.warn('⚠️ Could not check existing sessions:', sessionError.message);
     }
 
-    // ✅ Check for login ban (progressive cooldown) - ONLY for different device logins
-    // Same device logins bypass the ban check to allow legitimate same-device re-logins
-    if (!isSameDeviceLogin) {
-      try {
-        const banCheck = await checkLoginBan(user.id);
+    // ✅ Check for active cooldown (from previous attempts)
+    try {
+      const cooldownCheck = await checkLoginCooldown(user.id);
+      
+      if (cooldownCheck.inCooldown) {
+        console.log(`🚫 User ${user.id} is in cooldown for ${cooldownCheck.remainingMinutes} minutes`);
         
-        if (banCheck.isBanned) {
-          const hours = Math.floor((banCheck.remainingMinutes || 0) / 60);
-          const minutes = (banCheck.remainingMinutes || 0) % 60;
-          let timeMessage = '';
-          
-          if (hours > 0) {
-            timeMessage = `${hours} heure${hours > 1 ? 's' : ''}`;
-            if (minutes > 0) {
-              timeMessage += ` et ${minutes} minute${minutes > 1 ? 's' : ''}`;
-            }
-          } else {
-            timeMessage = `${minutes} minute${minutes > 1 ? 's' : ''}`;
-          }
-          
-          console.log(`🚫 User ${user.id} is banned for ${timeMessage} (different device login)`);
-          
-          return res.status(403).json({
-            success: false,
-            message: `Compte temporairement verrouillé suite à un changement d'appareil. Réessayez dans ${timeMessage}.`,
-            isBanned: true,
-            bannedUntil: banCheck.bannedUntil,
-            remainingMinutes: banCheck.remainingMinutes,
-            cooldownLevel: banCheck.cooldownLevel,
-            reason: banCheck.reason
-          });
-        }
-      } catch (banError: any) {
-        // Gracefully handle if ban system not available
-        console.warn('⚠️ Could not check login ban:', banError.message);
+        return res.status(403).json({
+          success: false,
+          message: `Compte temporairement verrouillé. Réessayez dans ${cooldownCheck.remainingMinutes} minutes.`,
+          inCooldown: true,
+          remainingMinutes: cooldownCheck.remainingMinutes,
+          attemptCount: cooldownCheck.attemptCount
+        });
       }
-    } else {
-      console.log(`✅ Same device login - skipping ban check for user ${user.id}`);
+    } catch (cooldownError: any) {
+      console.warn('⚠️ Could not check cooldown:', cooldownError.message);
     }
 
     // ✅ Invalidate ALL existing sessions for this user (single-session enforcement)
@@ -207,6 +201,14 @@ router.post('/login', loginRateLimiter, async (req, res) => {
       console.warn('⚠️ Could not create session (table may not exist):', sessionError.message);
       // Fallback to old UUID generation if service fails
       sessionId = crypto.randomUUID();
+    }
+
+    // ✅ Reset login attempts counter on successful login
+    try {
+      await resetLoginAttempts(user.id);
+      console.log(`✅ Reset login attempts for user ${user.id} after successful login`);
+    } catch (resetError: any) {
+      console.warn('⚠️ Could not reset login attempts:', resetError.message);
     }
 
     // Generate JWT token with session ID embedded
@@ -506,37 +508,17 @@ router.post('/logout', async (req, res) => {
         
         console.log(`🔐 Logout for user ${userId}, session ${sessionId?.substring(0, 12)}...`);
         
-        // Get current session info for device detection
-        let currentDeviceFingerprint: string | null = null;
-        try {
-          const sessionResult = await database.query(
-            'SELECT device_fingerprint FROM sessions WHERE id = ? AND user_id = ?',
-            [sessionId, userId]
-          );
-          
-          if (sessionResult.rows.length > 0) {
-            currentDeviceFingerprint = sessionResult.rows[0].device_fingerprint;
-          }
-        } catch (err: any) {
-          console.warn('⚠️ Could not fetch session device fingerprint:', err.message);
-        }
-        
         // Invalidate session in sessions table
         try {
           await invalidateSession(sessionId);
+          console.log(`✅ Invalidated session ${sessionId?.substring(0, 12)} for user ${userId}`);
         } catch (sessionError: any) {
           console.warn('⚠️ Could not invalidate session:', sessionError.message);
         }
         
-        // ✅ Set progressive cooldown ban (unless same-device exemption applies)
-        // For logout, we always apply the ban since user is manually logging out
-        // If they log back in from the same device, the login flow will detect it
-        try {
-          const banInfo = await setLoginBan(userId, 'Logout - progressive cooldown');
-          console.log(`🚫 Set ${banInfo.hours}h login ban (level ${banInfo.level}) for user ${userId} until ${banInfo.bannedUntil.toISOString()}`);
-        } catch (banError: any) {
-          console.warn('⚠️ Could not set login ban:', banError.message);
-        }
+        // ✅ NO cooldown on logout - user can login again immediately on same browser
+        // Cooldown only applies after repeated attempts to login while already logged in
+        console.log(`✅ Logout successful - no cooldown applied for user ${userId}`);
         
       } catch (error) {
         console.warn('⚠️ Could not decode token for logout:', error);
