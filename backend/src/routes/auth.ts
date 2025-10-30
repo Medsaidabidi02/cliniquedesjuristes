@@ -3,18 +3,18 @@ import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import crypto from 'crypto';
 import database from '../config/database';
-import { generateDeviceFingerprint, generateOwnershipLabel, isSameDevice } from '../services/deviceFingerprint';
+import { generateDeviceFingerprint, generateOwnershipLabel } from '../services/deviceFingerprint';
 import {
   createSession,
-  invalidateUserSessions,
-  getActiveUserSessions,
-  invalidateSession
-} from '../services/sessionManager';
+  getActiveSession,
+  checkActiveSessionOnDifferentDevice,
+  invalidateSession,
+  updateSessionActivity
+} from '../services/sessionService';
 import {
-  recordLoginAttempt,
-  checkLoginCooldown,
-  applyCooldown,
-  resetLoginAttempts
+  recordAttempt,
+  checkCooldown,
+  resetAttempts
 } from '../services/loginAttempts';
 import { loginRateLimiter, sessionPingRateLimiter } from '../middleware/rateLimiter';
 
@@ -98,71 +98,9 @@ router.post('/login', loginRateLimiter, async (req, res) => {
     console.log(`📱 Device fingerprint: ${deviceFingerprint.substring(0, 16)}...`);
     console.log(`🏷️ Owner label: ${ownerLabel}`);
 
-    // ✅ Check for existing active sessions
-    let isSameDeviceLogin = false;
-    let hasActiveSession = false;
-    let activeSessionOwnerLabel: string | null = null;
-    
+    // ✅ STEP 1: Check for active cooldown first
     try {
-      const activeSessions = await getActiveUserSessions(user.id);
-      
-      if (activeSessions.length > 0) {
-        hasActiveSession = true;
-        activeSessionOwnerLabel = activeSessions[0].ownerLabel;
-        
-        // Check if any active session is from the same device/browser
-        for (const session of activeSessions) {
-          if (session.deviceFingerprint && isSameDevice(session.deviceFingerprint, deviceFingerprint)) {
-            isSameDeviceLogin = true;
-            console.log(`✅ Same device/browser detected - allowing re-login`);
-            break;
-          }
-        }
-        
-        // If different browser/device and active session exists, BLOCK login and track attempt
-        if (!isSameDeviceLogin) {
-          console.log(`🚫 Active session exists - blocking login from different browser for user ${user.id}`);
-          
-          // Record the login attempt
-          await recordLoginAttempt(user.id);
-          
-          // Check if we need to apply cooldown
-          const cooldownCheck = await checkLoginCooldown(user.id);
-          
-          if (cooldownCheck.attemptCount >= 5) {
-            // Apply cooldown after 5+ attempts
-            const cooldown = await applyCooldown(user.id);
-            
-            return res.status(403).json({
-              success: false,
-              message: `Trop de tentatives. Compte temporairement verrouillé pendant ${cooldown.cooldownMinutes} minutes.`,
-              hasActiveSession: true,
-              ownerLabel: activeSessionOwnerLabel,
-              inCooldown: true,
-              remainingMinutes: cooldown.cooldownMinutes,
-              attemptCount: cooldownCheck.attemptCount,
-              cooldownUntil: cooldown.cooldownUntil
-            });
-          }
-          
-          // Block but no cooldown yet (less than 5 attempts)
-          return res.status(409).json({
-            success: false,
-            message: 'Vous êtes déjà connecté sur un autre appareil. Veuillez vous déconnecter d\'abord.',
-            hasActiveSession: true,
-            ownerLabel: activeSessionOwnerLabel,
-            needsLogout: true,
-            attemptCount: cooldownCheck.attemptCount
-          });
-        }
-      }
-    } catch (sessionError: any) {
-      console.warn('⚠️ Could not check existing sessions:', sessionError.message);
-    }
-
-    // ✅ Check for active cooldown (from previous attempts)
-    try {
-      const cooldownCheck = await checkLoginCooldown(user.id);
+      const cooldownCheck = await checkCooldown(user.id);
       
       if (cooldownCheck.inCooldown) {
         console.log(`🚫 User ${user.id} is in cooldown for ${cooldownCheck.remainingMinutes} minutes`);
@@ -179,15 +117,46 @@ router.post('/login', loginRateLimiter, async (req, res) => {
       console.warn('⚠️ Could not check cooldown:', cooldownError.message);
     }
 
-    // ✅ Invalidate ALL existing sessions for this user (single-session enforcement)
+    // ✅ STEP 2: Check for existing active session
     try {
-      const invalidatedCount = await invalidateUserSessions(user.id);
-      console.log(`✅ Invalidated ${invalidatedCount} previous session(s) for user ${user.id}`);
+      const activeSessionOnDifferentDevice = await checkActiveSessionOnDifferentDevice(user.id, deviceFingerprint);
+      
+      if (activeSessionOnDifferentDevice) {
+        // Active session exists on different device - BLOCK login
+        console.log(`🚫 Active session exists on different device for user ${user.id}`);
+        
+        // Record the attempt
+        const attemptInfo = await recordAttempt(user.id);
+        
+        // Check if we need to apply cooldown (5+ attempts)
+        if (attemptInfo.attemptCount >= 5) {
+          console.log(`⚠️ User ${user.id} reached ${attemptInfo.attemptCount} attempts - cooldown applied`);
+          
+          return res.status(403).json({
+            success: false,
+            message: `Trop de tentatives. Compte temporairement verrouillé pendant ${attemptInfo.cooldownMinutes} minutes.`,
+            hasActiveSession: true,
+            ownerLabel: activeSessionOnDifferentDevice.ownerLabel,
+            inCooldown: true,
+            remainingMinutes: attemptInfo.cooldownMinutes,
+            attemptCount: attemptInfo.attemptCount
+          });
+        }
+        
+        // Block but no cooldown yet (less than 5 attempts)
+        return res.status(409).json({
+          success: false,
+          message: 'Vous êtes déjà connecté sur un autre appareil. Veuillez vous déconnecter d\'abord.',
+          hasActiveSession: true,
+          ownerLabel: activeSessionOnDifferentDevice.ownerLabel,
+          attemptCount: attemptInfo.attemptCount
+        });
+      }
     } catch (sessionError: any) {
-      console.warn('⚠️ Could not invalidate sessions:', sessionError.message);
+      console.warn('⚠️ Could not check active session:', sessionError.message);
     }
 
-    // ✅ Create new session in sessions table
+    // ✅ STEP 3: Create new session (auto-invalidates other sessions)
     let sessionId: string;
     try {
       sessionId = await createSession({
@@ -198,14 +167,14 @@ router.post('/login', loginRateLimiter, async (req, res) => {
         ownerLabel
       });
     } catch (sessionError: any) {
-      console.warn('⚠️ Could not create session (table may not exist):', sessionError.message);
-      // Fallback to old UUID generation if service fails
+      console.warn('⚠️ Could not create session:', sessionError.message);
+      // Fallback to UUID if service fails
       sessionId = crypto.randomUUID();
     }
 
-    // ✅ Reset login attempts counter on successful login
+    // ✅ STEP 4: Reset login attempts counter on successful login
     try {
-      await resetLoginAttempts(user.id);
+      await resetAttempts(user.id);
       console.log(`✅ Reset login attempts for user ${user.id} after successful login`);
     } catch (resetError: any) {
       console.warn('⚠️ Could not reset login attempts:', resetError.message);
@@ -536,6 +505,7 @@ router.post('/logout', async (req, res) => {
 });
 
 // Session ping endpoint - for background health checks
+// Session ping endpoint - Updates session activity for auto-refresh
 router.post('/session/ping', sessionPingRateLimiter, async (req, res) => {
   try {
     const authHeader = req.headers['authorization'];
@@ -550,19 +520,26 @@ router.post('/session/ping', sessionPingRateLimiter, async (req, res) => {
 
     try {
       const decoded = jwt.verify(token, JWT_SECRET) as any;
-      const userId = decoded.id;
       const sessionId = decoded.sessionId;
       
-      // Update session last activity
-      await database.query(
-        'UPDATE sessions SET last_activity = NOW() WHERE id = ? AND user_id = ?',
-        [sessionId, userId]
-      );
+      if (!sessionId) {
+        return res.status(401).json({ success: false, message: 'Session invalide' });
+      }
       
-      res.json({
-        success: true,
-        message: 'Session updated'
-      });
+      // Update session activity using new service
+      const updated = await updateSessionActivity(sessionId);
+      
+      if (updated) {
+        res.json({
+          success: true,
+          message: 'Session refreshed'
+        });
+      } else {
+        res.status(401).json({
+          success: false,
+          message: 'Session not found or invalid'
+        });
+      }
     } catch (error) {
       return res.status(401).json({ success: false, message: 'Token invalide ou expiré' });
     }

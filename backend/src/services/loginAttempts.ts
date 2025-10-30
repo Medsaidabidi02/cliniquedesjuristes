@@ -15,8 +15,13 @@ interface LoginAttemptRecord {
 
 /**
  * Record a failed login attempt (user tried to login while already logged in)
+ * Returns attempt info including cooldown if applicable
  */
-export async function recordLoginAttempt(userId: number): Promise<void> {
+export async function recordAttempt(userId: number): Promise<{
+  attemptCount: number;
+  cooldownMinutes: number;
+  cooldownUntil: Date | null;
+}> {
   try {
     // Check if record exists
     const result = await database.query(
@@ -24,6 +29,8 @@ export async function recordLoginAttempt(userId: number): Promise<void> {
       [userId]
     );
 
+    let attemptCount = 1;
+    
     if (result.rows.length === 0) {
       // Create new record
       await database.query(
@@ -33,12 +40,35 @@ export async function recordLoginAttempt(userId: number): Promise<void> {
       console.log(`📊 Created login attempt record for user ${userId} (count: 1)`);
     } else {
       // Increment count
+      attemptCount = result.rows[0].attempt_count + 1;
       await database.query(
-        'UPDATE login_attempts SET attempt_count = attempt_count + 1, last_attempt = NOW() WHERE user_id = ?',
-        [userId]
+        'UPDATE login_attempts SET attempt_count = ?, last_attempt = NOW() WHERE user_id = ?',
+        [attemptCount, userId]
       );
-      console.log(`📊 Incremented login attempt count for user ${userId}`);
+      console.log(`📊 Incremented login attempt count for user ${userId} to ${attemptCount}`);
     }
+    
+    // Calculate and apply cooldown if needed (5+ attempts)
+    let cooldownMinutes = 0;
+    let cooldownUntil: Date | null = null;
+    
+    if (attemptCount >= 5) {
+      cooldownMinutes = calculateCooldown(attemptCount);
+      cooldownUntil = new Date(Date.now() + cooldownMinutes * 60 * 1000);
+      
+      await database.query(
+        'UPDATE login_attempts SET cooldown_until = ? WHERE user_id = ?',
+        [cooldownUntil, userId]
+      );
+      
+      console.log(`⏱️ Applied ${cooldownMinutes} minute cooldown for user ${userId} (${attemptCount} attempts)`);
+    }
+    
+    return {
+      attemptCount,
+      cooldownMinutes,
+      cooldownUntil
+    };
   } catch (error: any) {
     console.error('❌ Error recording login attempt:', error.message);
     throw error;
@@ -93,7 +123,7 @@ export function calculateCooldown(attemptCount: number): number {
 /**
  * Check if user is in cooldown period
  */
-export async function checkLoginCooldown(userId: number): Promise<{
+export async function checkCooldown(userId: number): Promise<{
   inCooldown: boolean;
   remainingMinutes: number;
   attemptCount: number;
@@ -172,7 +202,7 @@ export async function applyCooldown(userId: number): Promise<{
 /**
  * Reset login attempts (called after successful login)
  */
-export async function resetLoginAttempts(userId: number): Promise<void> {
+export async function resetAttempts(userId: number): Promise<void> {
   try {
     await database.query(
       'DELETE FROM login_attempts WHERE user_id = ?',
