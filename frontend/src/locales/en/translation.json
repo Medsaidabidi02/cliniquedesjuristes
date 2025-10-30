@@ -175,5 +175,17 @@
   },
   "homepage": {
     "error_loading": "Failed to load content. Please try again later."
+  },
+  "session": {
+    "active": {
+      "title": "Session Already Active",
+      "message": "Your account is already active in another session. Please log out from the other device first.",
+      "minutes": "minute(s)",
+      "cooldown": "Too many login attempts. Please wait before trying again.",
+      "attempts_remaining": "Attempts remaining: {{count}}",
+      "return_to_login": "Return to Login",
+      "checking": "Checking...",
+      "auto_refresh": "This page will automatically check if the session is available every 30 seconds."
+    }
   }
 }

@@ -9,6 +9,7 @@ import Loading from './components/Loading';
 // Pages
 import HomePage from './pages/HomePage';
 import LoginPage from './pages/LoginPage';
+import SessionActivePage from './pages/SessionActivePage';
 import BlogPage from './pages/BlogPage';
 import BlogDetailPage from './pages/BlogDetailPage';
 import CoursesPage from './pages/CoursesPage';
@@ -104,6 +105,7 @@ function App() {
 
         {/* Guest Routes */}
         <Route path="/login" element={<GuestRoute><LoginPage /></GuestRoute>} />
+        <Route path="/session-active" element={<SessionActivePage />} />
 
         {/* Protected Routes */}
 

@@ -30,7 +30,6 @@ export const authService = {
     try {
       console.log('🔐 Attempting login with:', { email: credentials.email, passwordLength: credentials.password.length });
       
-      
       const response = await api.post<LoginResponse>('/auth/login', credentials);
       
       if (response && response.token && response.user) {
@@ -47,8 +46,18 @@ export const authService = {
       
       console.error('❌ Login failed - invalid response structure:', response);
       throw new Error('Login failed');
-    } catch (error) {
+    } catch (error: any) {
       console.error('❌ Login error:', error);
+      
+      // Check if this is a session-active error
+      if (error.response?.data?.sessionActive) {
+        const sessionError = new Error(error.response.data.message || 'Session already active') as any;
+        sessionError.sessionActive = true;
+        sessionError.cooldownMinutes = error.response.data.cooldownMinutes || 0;
+        sessionError.attemptsRemaining = error.response.data.attemptsRemaining || 0;
+        throw sessionError;
+      }
+      
       throw error;
     }
   },

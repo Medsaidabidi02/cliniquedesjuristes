@@ -175,5 +175,17 @@
   },
   "homepage": {
     "error_loading": "Échec du chargement du contenu. Veuillez réessayer plus tard."
+  },
+  "session": {
+    "active": {
+      "title": "Session Déjà Active",
+      "message": "Votre compte est déjà actif dans une autre session. Veuillez vous déconnecter de l'autre appareil d'abord.",
+      "minutes": "minute(s)",
+      "cooldown": "Trop de tentatives de connexion. Veuillez patienter avant de réessayer.",
+      "attempts_remaining": "Tentatives restantes: {{count}}",
+      "return_to_login": "Retour à la Connexion",
+      "checking": "Vérification...",
+      "auto_refresh": "Cette page vérifiera automatiquement si la session est disponible toutes les 30 secondes."
+    }
   }
 }

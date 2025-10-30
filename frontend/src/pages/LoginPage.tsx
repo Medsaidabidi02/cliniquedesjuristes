@@ -72,8 +72,20 @@ const LoginPage: React.FC = () => {
 
       // Regular user -> redirect path
       navigate(redirectPath);
-    } catch (err) {
+    } catch (err: any) {
       console.error('❌ Login error:', err);
+      
+      // Check if this is a session-active error
+      if (err.sessionActive) {
+        navigate('/session-active', {
+          state: {
+            cooldownMinutes: err.cooldownMinutes || 0,
+            attemptsRemaining: err.attemptsRemaining || 0
+          }
+        });
+        return;
+      }
+      
       setError(err instanceof Error ? err.message : t('auth.login.error_default', 'Login failed. Please check your credentials.'));
     } finally {
       setLoading(false);

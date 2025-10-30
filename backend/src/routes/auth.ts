@@ -12,7 +12,7 @@ const JWT_SECRET: string = process.env.JWT_SECRET || 'legal-education-platform-s
 // Make token lifetime configurable; longer in development for convenience
 const JWT_EXPIRES_IN: string = process.env.JWT_EXPIRES_IN || (process.env.NODE_ENV === 'production' ? '1h' : '7d');
 
-// Login route with full session-based anti-sharing enforcement
+// Login route with single-session enforcement and progressive cooldown
 router.post('/login', async (req, res) => {
   try {
     let { email, password } = req.body;
@@ -77,19 +77,113 @@ router.post('/login', async (req, res) => {
       });
     }
 
-    // ✅ NEW: Invalidate ALL existing sessions for this user (single-session enforcement)
+    // ✅ NEW: Check for active sessions (single session enforcement)
     try {
-      await database.query(
-        'UPDATE sessions SET valid = FALSE WHERE user_id = ? AND valid = TRUE',
+      const activeSessionResult = await database.query(
+        'SELECT id, ip_address, user_agent, created_at FROM sessions WHERE user_id = ? AND valid = TRUE',
         [user.id]
       );
-      console.log(`✅ Invalidated all previous sessions for user ${user.id}`);
+      
+      if (activeSessionResult.rows.length > 0) {
+        const activeSession = activeSessionResult.rows[0];
+        console.log(`⚠️ User ${user.id} already has an active session from ${activeSession.ip_address}`);
+        
+        // Check if this is the same device (same IP + user agent)
+        const isSameDevice = activeSession.ip_address === ipAddress && 
+                            activeSession.user_agent === userAgent;
+        
+        if (isSameDevice) {
+          console.log(`✅ Same device detected, allowing login and refreshing session`);
+          // Invalidate old session and continue with new login
+          await database.query(
+            'UPDATE sessions SET valid = FALSE WHERE id = ?',
+            [activeSession.id]
+          );
+        } else {
+          // Different device - implement progressive cooldown
+          console.log(`🚫 Different device detected - checking cooldown status`);
+          
+          // Check login attempts
+          let attemptRecord = await database.query(
+            'SELECT id, attempt_count, cooldown_until FROM login_attempts WHERE user_id = ?',
+            [user.id]
+          );
+          
+          let attemptCount = 0;
+          let cooldownUntil = null;
+          
+          if (attemptRecord.rows.length > 0) {
+            attemptCount = attemptRecord.rows[0].attempt_count || 0;
+            cooldownUntil = attemptRecord.rows[0].cooldown_until;
+            
+            // Check if cooldown is active
+            if (cooldownUntil && new Date(cooldownUntil) > new Date()) {
+              const remainingMinutes = Math.ceil((new Date(cooldownUntil).getTime() - new Date().getTime()) / 60000);
+              console.log(`⏳ User ${user.id} is in cooldown for ${remainingMinutes} more minute(s)`);
+              
+              return res.status(403).json({
+                success: false,
+                message: `Votre compte est déjà actif dans une autre session. Cooldown actif: réessayez dans ${remainingMinutes} minute(s).`,
+                sessionActive: true,
+                cooldownMinutes: remainingMinutes
+              });
+            }
+          }
+          
+          // Increment attempt count
+          attemptCount += 1;
+          
+          // Calculate cooldown if attempts exceed threshold
+          let newCooldownUntil = null;
+          if (attemptCount > 5) {
+            // Progressive cooldown: 15 min, 30 min, 1h, 2h, 4h, etc.
+            const cooldownMultiplier = Math.pow(2, attemptCount - 6);
+            const cooldownMinutes = Math.min(15 * cooldownMultiplier, 240); // Max 4 hours
+            newCooldownUntil = new Date(Date.now() + cooldownMinutes * 60000);
+            
+            console.log(`⏳ Setting cooldown for user ${user.id}: ${cooldownMinutes} minutes (attempt ${attemptCount})`);
+          }
+          
+          // Update or insert attempt record
+          if (attemptRecord.rows.length > 0) {
+            await database.query(
+              'UPDATE login_attempts SET attempt_count = ?, cooldown_until = ?, last_attempt_at = NOW() WHERE user_id = ?',
+              [attemptCount, newCooldownUntil, user.id]
+            );
+          } else {
+            await database.query(
+              'INSERT INTO login_attempts (user_id, attempt_count, cooldown_until) VALUES (?, ?, ?)',
+              [user.id, attemptCount, newCooldownUntil]
+            );
+          }
+          
+          // Block login with session-active message
+          const message = attemptCount > 5 && newCooldownUntil
+            ? `Votre compte est déjà actif dans une autre session. Trop de tentatives: cooldown de ${Math.ceil((new Date(newCooldownUntil).getTime() - new Date().getTime()) / 60000)} minute(s) appliqué.`
+            : `Votre compte est déjà actif dans une autre session. Veuillez vous déconnecter d'abord. (Tentative ${attemptCount}/5)`;
+          
+          return res.status(403).json({
+            success: false,
+            message: message,
+            sessionActive: true,
+            attemptsRemaining: Math.max(0, 5 - attemptCount),
+            cooldownMinutes: newCooldownUntil ? Math.ceil((new Date(newCooldownUntil).getTime() - new Date().getTime()) / 60000) : 0
+          });
+        }
+      }
+      
+      // Reset attempt count on successful login
+      await database.query(
+        'DELETE FROM login_attempts WHERE user_id = ?',
+        [user.id]
+      );
+      
     } catch (sessionError: any) {
-      // Gracefully handle if sessions table doesn't exist
-      console.warn('⚠️ Could not invalidate sessions (table may not exist):', sessionError.code || sessionError.message);
+      // Gracefully handle if tables don't exist
+      console.warn('⚠️ Could not check sessions (table may not exist):', sessionError.code || sessionError.message);
     }
 
-    // ✅ NEW: Create new session in sessions table
+    // ✅ Create new session in sessions table
     const sessionId = crypto.randomUUID();
     try {
       await database.query(
@@ -108,7 +202,7 @@ router.post('/login', async (req, res) => {
         id: user.id,
         email: user.email,
         isAdmin: user.is_admin,
-        sessionId: sessionId  // ✅ NEW: Include session ID in JWT
+        sessionId: sessionId
       },
       JWT_SECRET,
       { expiresIn: JWT_EXPIRES_IN as any }
@@ -137,68 +231,68 @@ router.post('/login', async (req, res) => {
   }
 });
 
-// Register route (for new users)
-router.post('/register', async (req, res) => {
+// Check session status endpoint (for session-active page)
+router.get('/session-status', async (req, res) => {
   try {
-    let { name, email, password } = req.body;
+    const authHeader = req.headers['authorization'];
+    if (!authHeader) {
+      return res.status(401).json({ success: false, message: 'Token d\'accès requis' });
+    }
 
-    console.log('📝 Registration attempt received for Medsaidabidi02 at 2025-09-09 15:17:20');
-    console.log('📝 Registration data:', { name, email: email ? 'provided' : 'missing' });
+    let token = authHeader;
+    if (authHeader.startsWith('Bearer ')) {
+      token = authHeader.substring(7);
+    }
 
-    // Validate input
-    if (!name || !email || !password) {
-      console.log('❌ Missing required fields for registration by Medsaidabidi02');
-      return res.status(400).json({
-        success: false,
-        message: 'Nom, email et mot de passe requis'
+    let decoded: any;
+    try {
+      decoded = jwt.verify(token, JWT_SECRET);
+    } catch (error) {
+      return res.status(401).json({ success: false, message: 'Token invalide ou expiré' });
+    }
+
+    // Check if session is still valid
+    const sessionResult = await database.query(
+      'SELECT id, valid, ip_address, user_agent, created_at, last_activity FROM sessions WHERE id = ? AND user_id = ?',
+      [decoded.sessionId, decoded.id]
+    );
+
+    if (sessionResult.rows.length === 0 || !sessionResult.rows[0].valid) {
+      return res.json({
+        success: true,
+        sessionValid: false,
+        message: 'Session invalidée - connecté ailleurs'
       });
     }
 
-    // Normalize input
-    email = email.trim().toLowerCase();
-    name = name.trim();
+    // Check for cooldown
+    const attemptResult = await database.query(
+      'SELECT attempt_count, cooldown_until FROM login_attempts WHERE user_id = ?',
+      [decoded.id]
+    );
 
-    // Check if user already exists
-    const existingUser = await database.query('SELECT id FROM users WHERE LOWER(TRIM(email)) = ?', [email]);
-    if (existingUser.rows.length > 0) {
-      console.log('❌ User already exists with email:', email, 'by Medsaidabidi02');
-      return res.status(409).json({
-        success: false,
-        message: 'Un utilisateur avec cet email existe déjà'
-      });
+    let cooldownMinutes = 0;
+    if (attemptResult.rows.length > 0 && attemptResult.rows[0].cooldown_until) {
+      const cooldownUntil = new Date(attemptResult.rows[0].cooldown_until);
+      if (cooldownUntil > new Date()) {
+        cooldownMinutes = Math.ceil((cooldownUntil.getTime() - new Date().getTime()) / 60000);
+      }
     }
 
-    // Hash password
-    const hashedPassword = await bcrypt.hash(password, 10);
-
-    // Create user (not approved by default, not admin)
-    const result = await database.query(
-      'INSERT INTO users (name, email, password, is_admin, is_approved) VALUES (?, ?, ?, ?, ?)',
-      [name, email, hashedPassword, false, false]
-    );
-
-    // Get the created user
-    const newUser = await database.query(
-      'SELECT id, name, email, is_admin, is_approved, created_at FROM users WHERE id = ?',
-      [result.insertId]
-    );
-
-    console.log('✅ User registered successfully for Medsaidabidi02:', newUser.rows[0]);
-
-    res.status(201).json({
+    res.json({
       success: true,
-      message: 'Utilisateur créé avec succès. En attente d\'approbation.',
-      user: newUser.rows[0]
+      sessionValid: true,
+      cooldownMinutes: cooldownMinutes
     });
 
   } catch (error) {
-    console.error('❌ Registration error for Medsaidabidi02:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Erreur serveur lors de l\'inscription'
-    });
+    console.error('❌ Error checking session status:', error);
+    res.status(500).json({ success: false, message: 'Erreur serveur' });
   }
 });
+
+// Register route - REMOVED per requirements (only keep login)
+// Registration should be handled manually by admins
 
 // Admin helper: reset password for any user (POST /api/auth/reset-password-admin)
 router.post('/reset-password-admin', async (req, res) => {
@@ -376,7 +470,7 @@ router.get('/debug-users', async (req, res) => {
   }
 });
 
-// Logout endpoint - invalidate session and set 1-hour ban to prevent account sharing
+// Logout endpoint - invalidate session and reset attempt count
 router.post('/logout', async (req, res) => {
   try {
     console.log('👋 Logout request received');
@@ -404,8 +498,18 @@ router.post('/logout', async (req, res) => {
           );
           console.log(`✅ Session ${sessionId?.substring(0, 12)}... invalidated`);
         } catch (sessionError: any) {
-          // Gracefully handle if sessions table doesn't exist
           console.warn('⚠️ Could not invalidate session (table may not exist):', sessionError.code || sessionError.message);
+        }
+        
+        // ✅ NEW: Reset attempt count on logout (allows immediate re-login)
+        try {
+          await database.query(
+            'DELETE FROM login_attempts WHERE user_id = ?',
+            [userId]
+          );
+          console.log(`✅ Login attempts reset for user ${userId}`);
+        } catch (attemptError: any) {
+          console.warn('⚠️ Could not reset attempts (table may not exist):', attemptError.code || attemptError.message);
         }
         
       } catch (error) {

@@ -1,6 +1,6 @@
 /**
  * Database Migration Runner
- * Adds session_token and last_activity columns to users table
+ * Complete session system with progressive cooldown
  * 
  * Usage: node run-migration.js
  */
@@ -11,7 +11,7 @@ const fs = require('fs');
 const path = require('path');
 
 async function runMigration() {
-  console.log('🔧 Starting database migration...\n');
+  console.log('🔧 Starting complete session system migration...\n');
   
   // Parse DATABASE_URL if it exists, otherwise use individual vars
   let config;
@@ -59,93 +59,58 @@ async function runMigration() {
     connection = await mysql.createConnection(config);
     console.log('✅ Connected successfully!\n');
 
-    // Check current table structure
-    console.log('🔍 Checking current users table structure...');
-    const [columns] = await connection.query(`
-      SHOW COLUMNS FROM users
+    // Create sessions table
+    console.log('📝 Creating/Updating sessions table...');
+    await connection.query(`
+      CREATE TABLE IF NOT EXISTS sessions (
+        id VARCHAR(255) PRIMARY KEY,
+        user_id INT NOT NULL,
+        valid BOOLEAN DEFAULT TRUE,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        ip_address VARCHAR(45) NULL,
+        user_agent VARCHAR(512) NULL,
+        last_activity TIMESTAMP NULL,
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+        INDEX idx_user_id (user_id),
+        INDEX idx_valid (valid),
+        INDEX idx_created_at (created_at)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='Session tracking for single-device login enforcement'
     `);
-    
-    const columnNames = columns.map(col => col.Field);
-    console.log('   Current columns:', columnNames.join(', '));
-    
-    const hasSessionToken = columnNames.includes('session_token');
-    const hasLastActivity = columnNames.includes('last_activity');
-    
-    console.log(`   ➜ session_token: ${hasSessionToken ? '✓ EXISTS' : '✗ MISSING'}`);
-    console.log(`   ➜ last_activity: ${hasLastActivity ? '✓ EXISTS' : '✗ MISSING'}\n`);
+    console.log('✅ Sessions table ready!\n');
 
-    // Add session_token column if missing
-    if (!hasSessionToken) {
-      console.log('📝 Adding session_token column...');
-      await connection.query(`
-        ALTER TABLE users 
-        ADD COLUMN session_token VARCHAR(255) DEFAULT NULL
-      `);
-      console.log('✅ session_token column added!\n');
-    } else {
-      console.log('ℹ️  session_token column already exists, skipping...\n');
-    }
-
-    // Add last_activity column if missing
-    if (!hasLastActivity) {
-      console.log('📝 Adding last_activity column...');
-      await connection.query(`
-        ALTER TABLE users 
-        ADD COLUMN last_activity TIMESTAMP NULL DEFAULT NULL
-      `);
-      console.log('✅ last_activity column added!\n');
-    } else {
-      console.log('ℹ️  last_activity column already exists, skipping...\n');
-    }
-
-    // Create index if it doesn't exist
-    console.log('📝 Checking for session_token index...');
-    const [indexes] = await connection.query(`
-      SHOW INDEX FROM users WHERE Key_name = 'idx_session_token'
+    // Create login_attempts table
+    console.log('📝 Creating/Updating login_attempts table...');
+    await connection.query(`
+      CREATE TABLE IF NOT EXISTS login_attempts (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        user_id INT NOT NULL UNIQUE,
+        attempt_count INT DEFAULT 0,
+        cooldown_until DATETIME NULL,
+        last_attempt_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+        INDEX idx_user_id (user_id),
+        INDEX idx_cooldown_until (cooldown_until)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='Track login attempts for progressive cooldown'
     `);
-    
-    if (indexes.length === 0) {
-      console.log('📝 Creating index on session_token...');
-      await connection.query(`
-        CREATE INDEX idx_session_token ON users(session_token)
-      `);
-      console.log('✅ Index created!\n');
-    } else {
-      console.log('ℹ️  Index already exists, skipping...\n');
-    }
-
-    // Verify final structure
-    console.log('🔍 Verifying final table structure...');
-    const [finalColumns] = await connection.query(`
-      SHOW COLUMNS FROM users
-    `);
-    
-    console.log('\n📋 Final users table structure:');
-    console.log('   ID | Field              | Type           | Null | Key | Default');
-    console.log('   ---|--------------------|--------------  |------|-----|--------');
-    finalColumns.forEach((col, idx) => {
-      console.log(`   ${String(idx + 1).padEnd(2)} | ${col.Field.padEnd(18)} | ${col.Type.padEnd(14)} | ${col.Null.padEnd(4)} | ${(col.Key || '').padEnd(3)} | ${col.Default || 'NULL'}`);
-    });
+    console.log('✅ Login_attempts table ready!\n');
 
     // Show statistics
     console.log('\n📊 Current Statistics:');
-    const [stats] = await connection.query(`
-      SELECT 
-        COUNT(*) as total_users,
-        COUNT(session_token) as users_with_session,
-        COUNT(last_activity) as users_with_activity
-      FROM users
-    `);
+    const [userStats] = await connection.query(`SELECT COUNT(*) as total_users FROM users`);
+    const [sessionStats] = await connection.query(`SELECT COUNT(*) as total_sessions, COUNT(CASE WHEN valid = TRUE THEN 1 END) as active_sessions FROM sessions`);
+    const [attemptStats] = await connection.query(`SELECT COUNT(*) as total_attempts FROM login_attempts`);
     
-    console.log(`   Total users: ${stats[0].total_users}`);
-    console.log(`   Users with active session: ${stats[0].users_with_session}`);
-    console.log(`   Users with recent activity: ${stats[0].users_with_activity}`);
+    console.log(`   Total users: ${userStats[0].total_users}`);
+    console.log(`   Total sessions: ${sessionStats[0].total_sessions}`);
+    console.log(`   Active sessions: ${sessionStats[0].active_sessions}`);
+    console.log(`   Login attempts tracked: ${attemptStats[0].total_attempts}`);
 
     console.log('\n✅ Migration completed successfully!');
     console.log('\n💡 Next steps:');
     console.log('   1. Restart your backend server');
-    console.log('   2. Test login with single device enforcement');
-    console.log('   3. Try uploading large videos with chunked upload\n');
+    console.log('   2. Test single active session enforcement');
+    console.log('   3. Test progressive cooldown after 5 attempts\n');
 
   } catch (error) {
     console.error('\n❌ Migration failed!');
