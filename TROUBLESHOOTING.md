@@ -8,15 +8,44 @@
 ```
 ERROR in src/lib/deviceFingerprint.ts:1:27
 TS2307: Cannot find module '@fingerprintjs/fingerprintjs' or its corresponding type declarations.
+> 1 | import FingerprintJS from '@fingerprintjs/fingerprintjs';
 ```
 
-**Cause:** This error indicates you have a local file `src/lib/deviceFingerprint.ts` that is not part of the repository. This file is trying to import a package that isn't installed.
+**Cause:** This error indicates you have a local file `src/lib/deviceFingerprint.ts` that is **NOT part of this repository**. Someone created this file locally, and it's trying to import a package that isn't installed and isn't needed.
+
+**The session system does NOT use device fingerprinting.** It uses IP address + User-Agent for device detection.
 
 **Solution:**
-1. Delete the file: `rm frontend/src/lib/deviceFingerprint.ts` (if it exists)
-2. Remove any imports of `deviceFingerprint` from your code
-3. Run `npm install` again
-4. The session system doesn't use device fingerprinting - it uses IP + User-Agent for device detection
+
+1. **Delete the file:**
+   ```bash
+   cd frontend
+   rm src/lib/deviceFingerprint.ts
+   ```
+
+2. **Remove any imports:**
+   Search your code for any imports of `deviceFingerprint` and remove them:
+   ```bash
+   # Search for imports
+   grep -r "deviceFingerprint" src/
+   
+   # If found, remove those import lines
+   ```
+
+3. **Clean build:**
+   ```bash
+   rm -rf node_modules package-lock.json
+   npm install
+   npm start
+   ```
+
+4. **Verify it's not tracked by git:**
+   ```bash
+   git status
+   # The file should NOT appear (it's now in .gitignore)
+   ```
+
+**Why this happened:** The file `deviceFingerprint.ts` is now in `.gitignore` to prevent this issue. If you created it for testing, it's not needed - the session system already handles device detection using IP + User-Agent.
 
 ### Admin Cannot Login After Fresh Database Setup
 
