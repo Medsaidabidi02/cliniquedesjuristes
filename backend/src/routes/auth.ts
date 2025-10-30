@@ -67,10 +67,10 @@ router.post('/login', loginLimiter, async (req, res) => {
     }
 
     const user = userResult.rows[0];
-    console.log('👤 Found user:', { id: user.id, email: user.email, name: user.name });
+    console.log('👤 Found user:', { id: user.id, email: user.email, name: user.name, is_admin: user.is_admin, is_approved: user.is_approved });
 
-    // Block login if account not approved
-    if (!user.is_approved) {
+    // Block login if account not approved (except for admins)
+    if (!user.is_approved && !user.is_admin) {
       console.log('⛔ Account not approved:', user.id);
       return res.status(403).json({
         success: false,
@@ -101,13 +101,14 @@ router.post('/login', loginLimiter, async (req, res) => {
       console.log(`👑 Admin user ${user.id} - bypassing session restrictions`);
       // Invalidate any existing sessions for admin (allow fresh login)
       try {
-        await database.query(
+        const result = await database.query(
           'UPDATE sessions SET valid = FALSE WHERE user_id = ?',
           [user.id]
         );
         console.log(`✅ Invalidated old admin sessions for user ${user.id}`);
-      } catch (err) {
-        console.warn('⚠️ Could not invalidate old admin sessions:', err);
+      } catch (err: any) {
+        // Gracefully handle if sessions table doesn't exist yet
+        console.warn('⚠️ Could not invalidate old admin sessions (table may not exist):', err.code || err.message);
       }
       // Skip session enforcement for admins - continue to create new session below
     } else {
