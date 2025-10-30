@@ -11,6 +11,7 @@ This system implements a robust single active session per user with progressive 
 - Attempting to login while a session is active blocks the login
 - Logging in from the **same browser/device** automatically invalidates the old session and creates a new one
 - Logging in from a **different browser/device** blocks login and displays the session-active page
+- **Stale sessions** (inactive for more than 24 hours) are automatically invalidated to allow login
 
 ### 2. Progressive Cooldown System
 - First **5 login attempts** while another session is active are allowed (with warning)

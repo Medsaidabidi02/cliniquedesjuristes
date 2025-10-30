@@ -99,7 +99,7 @@ router.post('/login', loginLimiter, async (req, res) => {
     // ✅ NEW: Check for active sessions (single session enforcement)
     try {
       const activeSessionResult = await database.query(
-        'SELECT id, ip_address, user_agent, created_at FROM sessions WHERE user_id = ? AND valid = TRUE',
+        'SELECT id, ip_address, user_agent, created_at, last_activity FROM sessions WHERE user_id = ? AND valid = TRUE',
         [user.id]
       );
       
@@ -107,12 +107,21 @@ router.post('/login', loginLimiter, async (req, res) => {
         const activeSession = activeSessionResult.rows[0];
         console.log(`⚠️ User ${user.id} already has an active session from ${activeSession.ip_address}`);
         
+        // Check if session is stale (inactive for more than 24 hours or no last_activity)
+        const lastActivity = activeSession.last_activity ? new Date(activeSession.last_activity) : new Date(activeSession.created_at);
+        const hoursSinceActivity = (new Date().getTime() - lastActivity.getTime()) / (1000 * 60 * 60);
+        const isStaleSession = hoursSinceActivity > 24;
+        
         // Check if this is the same device (same IP + user agent)
         const isSameDevice = activeSession.ip_address === ipAddress && 
                             activeSession.user_agent === userAgent;
         
-        if (isSameDevice) {
-          console.log(`✅ Same device detected, allowing login and refreshing session`);
+        if (isSameDevice || isStaleSession) {
+          if (isStaleSession) {
+            console.log(`✅ Stale session detected (${hoursSinceActivity.toFixed(1)}h old), allowing login and invalidating old session`);
+          } else {
+            console.log(`✅ Same device detected, allowing login and refreshing session`);
+          }
           // Invalidate old session and continue with new login
           await database.query(
             'UPDATE sessions SET valid = FALSE WHERE id = ?',
