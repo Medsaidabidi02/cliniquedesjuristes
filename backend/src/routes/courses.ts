@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import database from '../config/database';
+import { cache } from '../utils/cache';
 
 const router = Router();
 
@@ -22,6 +23,15 @@ console.log('✅ Simple auth middleware loaded for courses');
 router.get('/', async (req, res) => {
   try {
     console.log('📋 GET /api/courses - Real database database.query for Azizkh07 at 2025-08-20 13:40:09');
+    
+    // Try to get from cache first
+    const cacheKey = 'courses:all';
+    const cachedData = cache.get<any[]>(cacheKey);
+    
+    if (cachedData) {
+      console.log('✅ Returning cached courses data');
+      return res.json(cachedData);
+    }
     
     const result = await database.query(`
       SELECT 
@@ -46,6 +56,10 @@ router.get('/', async (req, res) => {
     `);
     
     console.log(`✅ Real data: Found ${result.rows.length} courses for Azizkh07`);
+    
+    // Cache for 5 minutes
+    cache.set(cacheKey, result.rows, 300);
+    
     res.json(result.rows);
     
   } catch (error) {
@@ -130,6 +144,9 @@ router.post('/', authenticateToken, isAdmin, async (req, res) => {
     // Get the created course
     const createdCourse = await database.query('SELECT * FROM courses WHERE id = ?', [result.insertId]);
     
+    // Invalidate cache
+    cache.invalidatePattern('^courses:');
+    
     console.log('✅ Real course created in database for Azizkh07:', createdCourse.rows[0]);
     res.status(201).json(createdCourse.rows[0]);
     
@@ -179,6 +196,9 @@ router.put('/:id', authenticateToken, isAdmin, async (req, res) => {
     
     // Get the updated course
     const updatedCourse = await database.query('SELECT * FROM courses WHERE id = ?', [id]);
+    
+    // Invalidate cache
+    cache.invalidatePattern('^courses:');
     
     console.log(`✅ Real course ${id} updated in database for Azizkh07`);
     res.json(updatedCourse.rows[0]);
@@ -233,6 +253,11 @@ router.delete('/:id', authenticateToken, isAdmin, async (req, res) => {
       // Finally delete the course
       console.log('🔄 Step 4: Deleting course from database...');
       const courseResult = await database.query('DELETE FROM courses WHERE id = ?', [id]);
+      
+      // Invalidate cache
+      cache.invalidatePattern('^courses:');
+      cache.invalidatePattern('^subjects:');
+      cache.invalidatePattern('^videos:');
       
       console.log(`✅ Real course "${courseName}" (ID: ${id}) completely deleted from database for Azizkh07`);
       res.json({ 

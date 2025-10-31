@@ -19,9 +19,11 @@ class Database {
         password: decodeURIComponent(url.password),
         database: url.pathname.slice(1),
         waitForConnections: true,
-        connectionLimit: 20,
+        connectionLimit: 10, // Reduced from 20 to 10 for better resource management
         queueLimit: 0,
-        charset: 'utf8mb4'
+        charset: 'utf8mb4',
+        enableKeepAlive: true,
+        keepAliveInitialDelay: 30000 // 30 seconds
       };
     } else {
       connectionConfig = {
@@ -31,9 +33,11 @@ class Database {
         password: process.env.DB_PASSWORD || 'bKM8P}ZPWhH+{)Fg',
         database: process.env.DB_NAME || 'c2668909c_clinique_db',
         waitForConnections: true,
-        connectionLimit: 20,
+        connectionLimit: 10, // Reduced from 20 to 10 for better resource management
         queueLimit: 0,
-        charset: 'utf8mb4'
+        charset: 'utf8mb4',
+        enableKeepAlive: true,
+        keepAliveInitialDelay: 30000 // 30 seconds
       };
     }
 

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { api, getErrorMessage } from '../lib/api';
@@ -137,7 +137,7 @@ const CoursesPage: React.FC = () => {
     return false;
   };
 
-  const loadCoursesData = async () => {
+  const loadCoursesData = useCallback(async () => {
     try {
       setLoading(true);
       setError('');
@@ -148,20 +148,41 @@ const CoursesPage: React.FC = () => {
         videoService.getAllVideosWithSubjects()
       ]);
 
+      // Pre-build lookup maps for O(1) access instead of O(n) filter operations
+      const subjectsByCourseId = new Map<number, Subject[]>();
+      const videosBySubjectId = new Map<number, Video[]>();
+      
+      subjectsRes.forEach(subject => {
+        if (subject.is_active) {
+          if (!subjectsByCourseId.has(subject.course_id)) {
+            subjectsByCourseId.set(subject.course_id, []);
+          }
+          subjectsByCourseId.get(subject.course_id)!.push(subject);
+        }
+      });
+
+      videosRes.forEach(video => {
+        if (video.subject_id) {
+          if (!videosBySubjectId.has(video.subject_id)) {
+            videosBySubjectId.set(video.subject_id, []);
+          }
+          videosBySubjectId.get(video.subject_id)!.push(video);
+        }
+      });
+
       const coursesWithData: CourseWithData[] = coursesRes
         .filter(course => course.is_active)
         .map(course => {
-          const courseSubjects = subjectsRes.filter(s => s.course_id === course.id && s.is_active);
+          const courseSubjects = subjectsByCourseId.get(course.id) || [];
           const subjectsWithVideos = courseSubjects.map(subject => ({
             ...subject,
-            videos: videosRes.filter(v => v.subject_id === subject.id)
+            videos: videosBySubjectId.get(subject.id) || []
           }));
 
           const totalVideos = subjectsWithVideos.reduce((sum, s) => sum + s.videos.length, 0);
           const totalHours = subjectsWithVideos.reduce((sum, s) => sum + s.hours, 0);
-          const professorsSet: { [key: string]: boolean } = {};
-          subjectsWithVideos.forEach(s => { professorsSet[s.professor_name] = true; });
-          const professors = Object.keys(professorsSet);
+          const professorsSet = new Set(subjectsWithVideos.map(s => s.professor_name));
+          const professors = Array.from(professorsSet);
 
           const firstVideo = subjectsWithVideos.find(s => s.videos.length > 0)?.videos[0];
 
@@ -183,7 +204,7 @@ const CoursesPage: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   const handleVideoClick = (video: Video) => {
     if (!isAuthenticated) {
@@ -249,16 +270,21 @@ const CoursesPage: React.FC = () => {
     setSelectedVideo(null);
   };
 
-  const getCategoriesArray = (): string[] => {
-    const categoriesSet: { [key: string]: boolean } = { all: true };
+  // Memoize categories computation
+  const categories = useMemo(() => {
+    const categoriesSet = new Set(['all']);
     courses.forEach(c => {
-      if (c.category) categoriesSet[c.category] = true;
+      if (c.category) categoriesSet.add(c.category);
     });
-    return Object.keys(categoriesSet);
-  };
+    return Array.from(categoriesSet);
+  }, [courses]);
 
-  const categories = getCategoriesArray();
-  const filteredCourses = selectedCategory === 'all' ? courses : courses.filter(c => c.category === selectedCategory);
+  // Memoize filtered courses
+  const filteredCourses = useMemo(() => {
+    return selectedCategory === 'all' 
+      ? courses 
+      : courses.filter(c => c.category === selectedCategory);
+  }, [courses, selectedCategory]);
 
   if (loading) {
     return (

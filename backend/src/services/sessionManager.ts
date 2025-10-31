@@ -73,7 +73,10 @@ export async function invalidateUserSessions(
  */
 export async function getSession(sessionId: string): Promise<Session | null> {
   const result = await database.query(
-    `SELECT * FROM sessions WHERE id = ?`,
+    `SELECT id, user_id as userId, valid, is_active as isActive, created_at as createdAt, 
+     last_activity as lastActivity, ip_address as ipAddress, user_agent as userAgent, 
+     device_fingerprint as deviceFingerprint, owner_label as ownerLabel 
+     FROM sessions WHERE id = ?`,
     [sessionId]
   );
   
@@ -89,7 +92,10 @@ export async function getSession(sessionId: string): Promise<Session | null> {
  */
 export async function getUserSessions(userId: number): Promise<Session[]> {
   const result = await database.query(
-    `SELECT * FROM sessions WHERE user_id = ? ORDER BY created_at DESC`,
+    `SELECT id, user_id as userId, valid, is_active as isActive, created_at as createdAt, 
+     last_activity as lastActivity, ip_address as ipAddress, user_agent as userAgent, 
+     device_fingerprint as deviceFingerprint, owner_label as ownerLabel 
+     FROM sessions WHERE user_id = ? ORDER BY created_at DESC`,
     [userId]
   );
   
@@ -101,7 +107,10 @@ export async function getUserSessions(userId: number): Promise<Session[]> {
  */
 export async function getActiveUserSessions(userId: number): Promise<Session[]> {
   const result = await database.query(
-    `SELECT * FROM sessions WHERE user_id = ? AND valid = TRUE AND is_active = TRUE ORDER BY last_activity DESC`,
+    `SELECT id, user_id as userId, valid, is_active as isActive, created_at as createdAt, 
+     last_activity as lastActivity, ip_address as ipAddress, user_agent as userAgent, 
+     device_fingerprint as deviceFingerprint, owner_label as ownerLabel 
+     FROM sessions WHERE user_id = ? AND valid = TRUE AND is_active = TRUE ORDER BY last_activity DESC`,
     [userId]
   );
   
@@ -127,7 +136,10 @@ export async function validateSession(sessionId: string, userId: number): Promis
   reason?: string;
 }> {
   const result = await database.query(
-    `SELECT * FROM sessions WHERE id = ? AND user_id = ?`,
+    `SELECT id, user_id as userId, valid, is_active as isActive, created_at as createdAt, 
+     last_activity as lastActivity, ip_address as ipAddress, user_agent as userAgent, 
+     device_fingerprint as deviceFingerprint, owner_label as ownerLabel 
+     FROM sessions WHERE id = ? AND user_id = ?`,
     [sessionId, userId]
   );
   
