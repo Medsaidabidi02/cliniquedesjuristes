@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { Suspense, lazy } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { AuthProvider, useAuth } from './lib/AuthContext';
@@ -6,15 +6,17 @@ import { AuthProvider, useAuth } from './lib/AuthContext';
 // Components
 import Loading from './components/Loading';
 
-// Pages
+// Eagerly loaded pages (needed immediately)
 import HomePage from './pages/HomePage';
 import LoginPage from './pages/LoginPage';
-import BlogPage from './pages/BlogPage';
-import BlogDetailPage from './pages/BlogDetailPage';
-import CoursesPage from './pages/CoursesPage';
-import ContactPage from './pages/ContactPage';
-import AdminDashboard from './pages/AdminDashboard';
-import DraftsPage from './pages/DraftPage';
+
+// Lazy loaded pages (code splitting for better initial load)
+const BlogPage = lazy(() => import('./pages/BlogPage'));
+const BlogDetailPage = lazy(() => import('./pages/BlogDetailPage'));
+const CoursesPage = lazy(() => import('./pages/CoursesPage'));
+const ContactPage = lazy(() => import('./pages/ContactPage'));
+const AdminDashboard = lazy(() => import('./pages/AdminDashboard'));
+const DraftsPage = lazy(() => import('./pages/DraftPage'));
 
 // Protected Route Component
 const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -93,23 +95,25 @@ const GuestRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
 function App() {
   return (
     <AuthProvider>
-      <Routes>
-        {/* Public Routes */}
-        <Route path="/" element={<HomePage />} />
-        <Route path="/courses" element={<CoursesPage />} />
-        <Route path="/blog" element={<BlogPage />} />
-        <Route path="/blog/:slug" element={<BlogDetailPage />} />
-        <Route path="/blog/drafts" element={<DraftsPage />} />
-        <Route path="/contact" element={<ContactPage />} />
+      <Suspense fallback={<Loading fullScreen text="Loading page..." />}>
+        <Routes>
+          {/* Public Routes */}
+          <Route path="/" element={<HomePage />} />
+          <Route path="/courses" element={<CoursesPage />} />
+          <Route path="/blog" element={<BlogPage />} />
+          <Route path="/blog/:slug" element={<BlogDetailPage />} />
+          <Route path="/blog/drafts" element={<DraftsPage />} />
+          <Route path="/contact" element={<ContactPage />} />
 
-        {/* Guest Routes */}
-        <Route path="/login" element={<GuestRoute><LoginPage /></GuestRoute>} />
+          {/* Guest Routes */}
+          <Route path="/login" element={<GuestRoute><LoginPage /></GuestRoute>} />
 
-        {/* Protected Routes */}
+          {/* Protected Routes */}
 
-        {/* Admin Routes */}
-        <Route path="/admin/*" element={<AdminRoute><AdminDashboard /></AdminRoute>} />
-      </Routes>
+          {/* Admin Routes */}
+          <Route path="/admin/*" element={<AdminRoute><AdminDashboard /></AdminRoute>} />
+        </Routes>
+      </Suspense>
     </AuthProvider>
   );
 }

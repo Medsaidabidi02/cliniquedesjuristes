@@ -1,6 +1,8 @@
 import express from 'express';
 import jwt from 'jsonwebtoken';
 import { config } from '../config'; // adjust if your config path differs
+import { perfMonitor } from '../utils/performance';
+import { cache } from '../utils/cache';
 
 const router = express.Router();
 
@@ -35,6 +37,64 @@ router.get('/headers', (req, res) => {
     decodedToken: decoded,
     verifyError
   });
+});
+
+/**
+ * GET /api/debug/performance
+ * Returns performance metrics (only in development)
+ */
+router.get('/performance', (req, res) => {
+  if (process.env.NODE_ENV === 'production' && process.env.ENABLE_PERF_MONITOR !== 'true') {
+    return res.status(403).json({ error: 'Performance monitoring not enabled in production' });
+  }
+
+  const operation = req.query.operation as string | undefined;
+  const report = req.query.report === 'true';
+
+  if (report) {
+    return res.type('text/plain').send(perfMonitor.generateReport());
+  }
+
+  const stats = operation ? perfMonitor.getStats(operation) : null;
+  const operations = perfMonitor.getOperations();
+  const slowOps = perfMonitor.getSlowOperations(1000);
+
+  res.json({
+    operations,
+    stats,
+    slowOperations: slowOps.length,
+    slowOperationsSample: slowOps.slice(0, 10)
+  });
+});
+
+/**
+ * GET /api/debug/cache
+ * Returns cache statistics
+ */
+router.get('/cache', (req, res) => {
+  if (process.env.NODE_ENV === 'production' && process.env.ENABLE_PERF_MONITOR !== 'true') {
+    return res.status(403).json({ error: 'Cache monitoring not enabled in production' });
+  }
+
+  const stats = cache.getStats();
+  
+  res.json({
+    cacheSize: stats.size,
+    cachedKeys: stats.keys
+  });
+});
+
+/**
+ * POST /api/debug/cache/clear
+ * Clear cache (for testing)
+ */
+router.post('/cache/clear', (req, res) => {
+  if (process.env.NODE_ENV === 'production') {
+    return res.status(403).json({ error: 'Cache clearing not allowed in production' });
+  }
+
+  cache.clear();
+  res.json({ message: 'Cache cleared successfully' });
 });
 
 export { router as debugRoutes };

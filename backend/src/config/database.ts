@@ -1,5 +1,6 @@
 import mysql from 'mysql2/promise';
 import dotenv from 'dotenv';
+import { perfMonitor } from '../utils/performance';
 
 dotenv.config();
 
@@ -46,8 +47,16 @@ class Database {
   }
 
   async query(text: string, params?: any[]): Promise<any> {
+    const endTimer = perfMonitor.startTimer('database.query');
+    
     try {
       const [rows, fields] = await this.pool.execute(text, params);
+      
+      // Record query performance
+      endTimer({
+        query: text.substring(0, 100), // First 100 chars of query
+        rowCount: Array.isArray(rows) ? rows.length : 0
+      });
       
       // Handle INSERT/UPDATE/DELETE results
       if (rows && typeof rows === 'object' && 'insertId' in rows) {
@@ -67,6 +76,7 @@ class Database {
         affectedRows: undefined
       };
     } catch (error) {
+      endTimer({ error: true });
       console.error('Query error:', error);
       throw error;
     }

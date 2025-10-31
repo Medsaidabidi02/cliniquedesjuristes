@@ -3,7 +3,11 @@ import { api } from './api';
 // Session ping interval in milliseconds (5 minutes)
 const PING_INTERVAL = 5 * 60 * 1000;
 
+// Debounce delay for ping requests (30 seconds)
+const PING_DEBOUNCE = 30 * 1000;
+
 let pingIntervalId: NodeJS.Timeout | null = null;
+let lastPingTime: number = 0;
 let isRunning = false;
 
 /**
@@ -44,9 +48,20 @@ export function stopSessionHealthCheck(): void {
 
 /**
  * Send a ping to the server to update session activity
+ * Uses debouncing to prevent excessive pings
  */
 async function sendPing(): Promise<void> {
   try {
+    const now = Date.now();
+    
+    // Debounce: Skip ping if last ping was too recent
+    if (now - lastPingTime < PING_DEBOUNCE) {
+      console.log('⏭️ Skipping ping (debounced)');
+      return;
+    }
+    
+    lastPingTime = now;
+    
     await api.post('/auth/session/ping', {});
     console.log('💓 Session ping successful');
   } catch (error: any) {
