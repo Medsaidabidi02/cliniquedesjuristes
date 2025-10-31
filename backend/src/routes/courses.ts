@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import database from '../config/database';
 import { cache } from '../utils/cache';
+import { CACHE_PATTERNS, invalidateRelatedCaches } from '../utils/cachePatterns';
 
 const router = Router();
 
@@ -145,7 +146,7 @@ router.post('/', authenticateToken, isAdmin, async (req, res) => {
     const createdCourse = await database.query('SELECT * FROM courses WHERE id = ?', [result.insertId]);
     
     // Invalidate cache
-    cache.invalidatePattern('^courses:');
+    invalidateRelatedCaches(cache, CACHE_PATTERNS.COURSES);
     
     console.log('✅ Real course created in database for Azizkh07:', createdCourse.rows[0]);
     res.status(201).json(createdCourse.rows[0]);
@@ -198,7 +199,7 @@ router.put('/:id', authenticateToken, isAdmin, async (req, res) => {
     const updatedCourse = await database.query('SELECT * FROM courses WHERE id = ?', [id]);
     
     // Invalidate cache
-    cache.invalidatePattern('^courses:');
+    invalidateRelatedCaches(cache, CACHE_PATTERNS.COURSES);
     
     console.log(`✅ Real course ${id} updated in database for Azizkh07`);
     res.json(updatedCourse.rows[0]);
@@ -255,9 +256,7 @@ router.delete('/:id', authenticateToken, isAdmin, async (req, res) => {
       const courseResult = await database.query('DELETE FROM courses WHERE id = ?', [id]);
       
       // Invalidate cache
-      cache.invalidatePattern('^courses:');
-      cache.invalidatePattern('^subjects:');
-      cache.invalidatePattern('^videos:');
+      invalidateRelatedCaches(cache, CACHE_PATTERNS.COURSES, CACHE_PATTERNS.SUBJECTS, CACHE_PATTERNS.VIDEOS);
       
       console.log(`✅ Real course "${courseName}" (ID: ${id}) completely deleted from database for Azizkh07`);
       res.json({ 

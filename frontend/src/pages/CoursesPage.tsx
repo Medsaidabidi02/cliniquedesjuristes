@@ -148,7 +148,7 @@ const CoursesPage: React.FC = () => {
         videoService.getAllVideosWithSubjects()
       ]);
 
-      // Pre-build lookup maps for O(1) access instead of O(n) filter operations
+      // Pre-build lookup maps for faster O(n) access instead of nested O(n²) filter operations
       const subjectsByCourseId = new Map<number, Subject[]>();
       const videosBySubjectId = new Map<number, Video[]>();
       

@@ -68,9 +68,9 @@ class SimpleCache {
   /**
    * Invalidate all keys matching a pattern
    */
-  invalidatePattern(pattern: string): number {
+  invalidatePattern(pattern: string | RegExp): number {
     let count = 0;
-    const regex = new RegExp(pattern);
+    const regex = typeof pattern === 'string' ? new RegExp(pattern) : pattern;
     
     for (const key of this.cache.keys()) {
       if (regex.test(key)) {
