@@ -11,13 +11,25 @@ interface CacheEntry<T> {
 class SimpleCache {
   private cache: Map<string, CacheEntry<any>>;
   private defaultTTL: number;
+  private cleanupInterval: NodeJS.Timeout | null = null;
 
   constructor(defaultTTLSeconds: number = 300) {
     this.cache = new Map();
     this.defaultTTL = defaultTTLSeconds * 1000; // Convert to milliseconds
     
     // Clean up expired entries every minute
-    setInterval(() => this.cleanup(), 60000);
+    this.cleanupInterval = setInterval(() => this.cleanup(), 60000);
+  }
+
+  /**
+   * Destroy the cache and clean up resources
+   */
+  destroy(): void {
+    if (this.cleanupInterval) {
+      clearInterval(this.cleanupInterval);
+      this.cleanupInterval = null;
+    }
+    this.cache.clear();
   }
 
   /**

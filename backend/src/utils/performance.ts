@@ -84,14 +84,15 @@ class PerformanceMonitor {
 
     const durations = filteredMetrics.map(m => m.duration).sort((a, b) => a - b);
     const sum = durations.reduce((a, b) => a + b, 0);
-    const p95Index = Math.max(0, Math.ceil(durations.length * 0.95) - 1);
+    // Use floor for p95 to avoid out-of-bounds access
+    const p95Index = Math.floor(durations.length * 0.95);
 
     return {
       count: filteredMetrics.length,
       avgDuration: sum / durations.length,
       minDuration: durations[0],
       maxDuration: durations[durations.length - 1],
-      p95Duration: durations[p95Index]
+      p95Duration: durations[Math.min(p95Index, durations.length - 1)]
     };
   }
 

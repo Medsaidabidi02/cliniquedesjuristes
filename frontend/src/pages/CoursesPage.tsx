@@ -181,7 +181,10 @@ const CoursesPage: React.FC = () => {
 
           const totalVideos = subjectsWithVideos.reduce((sum, s) => sum + s.videos.length, 0);
           const totalHours = subjectsWithVideos.reduce((sum, s) => sum + s.hours, 0);
-          const professorsSet = new Set(subjectsWithVideos.map(s => s.professor_name));
+          // Filter out undefined/empty professor names
+          const professorsSet = new Set(
+            subjectsWithVideos.map(s => s.professor_name).filter(name => name && name.trim())
+          );
           const professors = Array.from(professorsSet);
 
           const firstVideo = subjectsWithVideos.find(s => s.videos.length > 0)?.videos[0];

@@ -52,10 +52,8 @@ class Database {
     try {
       const [rows, fields] = await this.pool.execute(text, params);
       
-      // Record query performance - only truncate if needed
-      const queryPreview = text.length > 100 ? text.slice(0, 100) + '...' : text;
+      // Record query performance
       endTimer({
-        query: queryPreview,
         rowCount: Array.isArray(rows) ? rows.length : 0
       });
       

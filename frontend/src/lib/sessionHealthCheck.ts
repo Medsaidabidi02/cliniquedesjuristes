@@ -56,21 +56,30 @@ async function sendPing(): Promise<void> {
     
     // Debounce: Skip ping if last ping was too recent
     if (now - lastPingTime < PING_DEBOUNCE) {
-      console.log('⏭️ Skipping ping (debounced)');
+      if (process.env.NODE_ENV === 'development') {
+        console.log('⏭️ Skipping ping (debounced)');
+      }
       return;
     }
     
     lastPingTime = now;
     
     await api.post('/auth/session/ping', {});
-    console.log('💓 Session ping successful');
+    
+    if (process.env.NODE_ENV === 'development') {
+      console.log('💓 Session ping successful');
+    }
   } catch (error: any) {
-    console.warn('⚠️ Session ping failed:', error.message);
+    if (process.env.NODE_ENV === 'development') {
+      console.warn('⚠️ Session ping failed:', error.message);
+    }
     
     // If ping fails due to auth error, session might be invalid
     // The API interceptor will handle this and trigger logout
     if (error.response?.status === 401) {
-      console.log('🚫 Session ping got 401 - session likely expired');
+      if (process.env.NODE_ENV === 'development') {
+        console.log('🚫 Session ping got 401 - session likely expired');
+      }
       stopSessionHealthCheck();
     }
   }
