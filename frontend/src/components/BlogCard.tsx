@@ -35,7 +35,7 @@ const BlogCard: React.FC<BlogCardProps> = ({ blog }) => {
             src={blog.cover_image}
             alt={blog.title}
             className="w-full h-full object-cover transition-transform duration-300 hover:scale-105"
-            onError={(e: any) => {
+            onError={(e: React.SyntheticEvent<HTMLImageElement, Event>) => {
               e.currentTarget.onerror = null;
               e.currentTarget.src = DEFAULT_BLOG_IMAGE;
             }}

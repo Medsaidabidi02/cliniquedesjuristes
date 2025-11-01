@@ -34,7 +34,7 @@ const normalizeImageUrl = (imageUrl: string | undefined | null): string | undefi
     const url = new URL(imageUrl);
     // Return just the pathname (e.g., /uploads/blog/image.jpg)
     return url.pathname;
-  } catch (e) {
+  } catch (error: unknown) {
     // If URL parsing fails, check if it looks like a path
     if (imageUrl.includes('/uploads/')) {
       // Extract the path starting from /uploads/
