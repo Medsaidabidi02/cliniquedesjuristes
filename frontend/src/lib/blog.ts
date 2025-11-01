@@ -15,6 +15,39 @@ export interface BlogPost {
   updated_at: string;
 }
 
+// Helper function to normalize image URLs to work in any environment
+const normalizeImageUrl = (imageUrl: string | undefined | null): string | undefined => {
+  if (!imageUrl) return undefined;
+  
+  // If it's a data URL (base64), return as-is
+  if (imageUrl.startsWith('data:')) {
+    return imageUrl;
+  }
+  
+  // If it's already a relative URL starting with /, return as-is
+  if (imageUrl.startsWith('/') && !imageUrl.startsWith('//')) {
+    return imageUrl;
+  }
+  
+  // If it's an absolute URL, extract just the path part
+  try {
+    const url = new URL(imageUrl);
+    // Return just the pathname (e.g., /uploads/blog/image.jpg)
+    return url.pathname;
+  } catch (e) {
+    // If URL parsing fails, check if it looks like a path
+    if (imageUrl.includes('/uploads/')) {
+      // Extract the path starting from /uploads/
+      const match = imageUrl.match(/\/uploads\/.+/);
+      if (match) {
+        return match[0];
+      }
+    }
+    // Otherwise return the original URL
+    return imageUrl;
+  }
+};
+
 // Define response interfaces for better type safety
 interface BlogListResponse {
   success?: boolean;
@@ -44,19 +77,27 @@ export const blogService = {
       const response = await api.get<BlogListResponse | BlogPost[]>('/blog');
       console.log('📄 Blog API response:', response);
       
+      let posts: BlogPost[] = [];
+      
       // Check if response is an array directly
       if (Array.isArray(response)) {
-        return response;
+        posts = response;
+      } else {
+        // Check for BlogListResponse structure
+        const typedResponse = response as BlogListResponse;
+        if (typedResponse && typedResponse.posts) {
+          posts = typedResponse.posts;
+        } else {
+          console.warn('⚠️ Unexpected blog response format:', response);
+          return [];
+        }
       }
       
-      // Check for BlogListResponse structure
-      const typedResponse = response as BlogListResponse;
-      if (typedResponse && typedResponse.posts) {
-        return typedResponse.posts;
-      }
-      
-      console.warn('⚠️ Unexpected blog response format:', response);
-      return [];
+      // Normalize image URLs for all posts
+      return posts.map(post => ({
+        ...post,
+        cover_image: normalizeImageUrl(post.cover_image)
+      }));
       
     } catch (error) {
       console.error('❌ Error fetching blogs:', error);
@@ -76,17 +117,27 @@ async getBlogBySlug(slug: string): Promise<BlogPost | null> {
     try {
       const response = await api.get<BlogSingleResponse | BlogPost>(`/blog/${slug}`);
       
+      let post: BlogPost | null = null;
+      
       // Check if response is a blog post directly
       if (response && 'id' in response && 'title' in response) {
-        return response as BlogPost;
+        post = response as BlogPost;
+      } else {
+        // Check for different possible response structures
+        const typedResponse = response as BlogSingleResponse;
+        if (typedResponse.data) {
+          post = typedResponse.data;
+        } else if (typedResponse.post) {
+          post = typedResponse.post;
+        }
       }
       
-      // Check for different possible response structures
-      const typedResponse = response as BlogSingleResponse;
-      if (typedResponse.data) {
-        return typedResponse.data;
-      } else if (typedResponse.post) {
-        return typedResponse.post;
+      // Normalize image URL if post found
+      if (post) {
+        return {
+          ...post,
+          cover_image: normalizeImageUrl(post.cover_image)
+        };
       }
       
       return null;
@@ -136,17 +187,27 @@ async getBlogBySlug(slug: string): Promise<BlogPost | null> {
       
       console.log('📄 Create blog response:', response);
       
+      let post: BlogPost | null = null;
+      
       // Check if response is a blog post directly
       if (response && 'id' in response && 'title' in response && 'content' in response) {
-        return response as BlogPost;
+        post = response as BlogPost;
+      } else {
+        // Check for different possible response structures
+        const typedResponse = response as BlogSingleResponse;
+        if (typedResponse.post) {
+          post = typedResponse.post;
+        } else if (typedResponse.data) {
+          post = typedResponse.data;
+        }
       }
       
-      // Check for different possible response structures
-      const typedResponse = response as BlogSingleResponse;
-      if (typedResponse.post) {
-        return typedResponse.post;
-      } else if (typedResponse.data) {
-        return typedResponse.data;
+      // Normalize image URL if post created
+      if (post) {
+        return {
+          ...post,
+          cover_image: normalizeImageUrl(post.cover_image)
+        };
       }
       
       return null;
@@ -176,17 +237,27 @@ async getBlogBySlug(slug: string): Promise<BlogPost | null> {
       
       console.log('📄 Update blog response:', response);
       
+      let post: BlogPost | null = null;
+      
       // Check if response is a blog post directly
       if (response && 'id' in response && 'title' in response && 'content' in response) {
-        return response as BlogPost;
+        post = response as BlogPost;
+      } else {
+        // Check for different possible response structures
+        const typedResponse = response as BlogSingleResponse;
+        if (typedResponse.post) {
+          post = typedResponse.post;
+        } else if (typedResponse.data) {
+          post = typedResponse.data;
+        }
       }
       
-      // Check for different possible response structures
-      const typedResponse = response as BlogSingleResponse;
-      if (typedResponse.post) {
-        return typedResponse.post;
-      } else if (typedResponse.data) {
-        return typedResponse.data;
+      // Normalize image URL if post updated
+      if (post) {
+        return {
+          ...post,
+          cover_image: normalizeImageUrl(post.cover_image)
+        };
       }
       
       return null;
