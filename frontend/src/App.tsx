@@ -12,6 +12,7 @@ import LoginPage from './pages/LoginPage';
 import BlogPage from './pages/BlogPage';
 import BlogDetailPage from './pages/BlogDetailPage';
 import CoursesPage from './pages/CoursesPage';
+import CoursePlayerPage from './pages/CoursePlayerPage';
 import ContactPage from './pages/ContactPage';
 import AdminDashboard from './pages/AdminDashboard';
 import DraftsPage from './pages/DraftPage';
@@ -97,6 +98,7 @@ function App() {
         {/* Public Routes */}
         <Route path="/" element={<HomePage />} />
         <Route path="/courses" element={<CoursesPage />} />
+        <Route path="/course/:courseId" element={<CoursePlayerPage />} />
         <Route path="/blog" element={<BlogPage />} />
         <Route path="/blog/:slug" element={<BlogDetailPage />} />
         <Route path="/blog/drafts" element={<DraftsPage />} />
