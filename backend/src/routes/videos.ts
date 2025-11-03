@@ -583,34 +583,56 @@ router.get('/:videoId/signed-url', signedUrlLimiter, simpleAuth, async (req, res
       });
     }
 
-    // Generate signed URL with 60 minute expiration
-    const signedUrl = bunnySign.generateSignedUrl(videoPath, {
-      expirationMinutes: parseInt(process.env.BUNNY_URL_EXPIRY_MINUTES || '60')
-    });
+    console.log(`📹 Video path from database: ${videoPath}`);
 
-    // Also generate thumbnail signed URL if available
-    let thumbnailUrl = null;
-    if (video.thumbnail_path) {
-      thumbnailUrl = bunnySign.generateSignedUrl(video.thumbnail_path, {
-        expirationMinutes: 120 // Thumbnails get longer expiry
+    // Generate signed URL with 60 minute expiration
+    try {
+      const signedUrl = bunnySign.generateSignedUrl(videoPath, {
+        expirationMinutes: parseInt(process.env.BUNNY_URL_EXPIRY_MINUTES || '60')
+      });
+
+      // Also generate thumbnail signed URL if available
+      let thumbnailUrl = null;
+      if (video.thumbnail_path) {
+        try {
+          thumbnailUrl = bunnySign.generateSignedUrl(video.thumbnail_path, {
+            expirationMinutes: 120 // Thumbnails get longer expiry
+          });
+        } catch (thumbError) {
+          console.log('⚠️ Could not generate thumbnail signed URL:', thumbError);
+        }
+      }
+
+      console.log(`✅ Generated signed URL for video ${videoId}`);
+      console.log(`🔗 Signed URL: ${signedUrl.substring(0, 100)}...`);
+
+      res.json({
+        success: true,
+        videoUrl: signedUrl,
+        thumbnailUrl,
+        expiresIn: parseInt(process.env.BUNNY_URL_EXPIRY_MINUTES || '60') * 60, // in seconds
+        video: {
+          id: video.id,
+          title: video.title,
+          description: video.description,
+          duration: video.duration,
+          is_locked: video.is_locked
+        }
+      });
+    } catch (urlError) {
+      console.error(`❌ Error generating signed URL:`, urlError);
+      
+      // If signed URL generation fails, it might be because Pull Zone isn't configured
+      // Return a helpful error message
+      const errorMessage = urlError instanceof Error ? urlError.message : 'Unknown error';
+      
+      return res.status(500).json({ 
+        success: false,
+        message: 'Failed to generate signed URL',
+        error: errorMessage,
+        hint: 'Make sure BUNNY_PULL_ZONE_URL and BUNNY_SECURITY_KEY are configured in your .env file'
       });
     }
-
-    console.log(`✅ Generated signed URL for video ${videoId}`);
-
-    res.json({
-      success: true,
-      videoUrl: signedUrl,
-      thumbnailUrl,
-      expiresIn: parseInt(process.env.BUNNY_URL_EXPIRY_MINUTES || '60') * 60, // in seconds
-      video: {
-        id: video.id,
-        title: video.title,
-        description: video.description,
-        duration: video.duration,
-        is_locked: video.is_locked
-      }
-    });
 
   } catch (error) {
     console.error(`❌ Error generating signed URL:`, error);
