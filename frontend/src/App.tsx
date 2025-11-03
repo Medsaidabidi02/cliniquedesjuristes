@@ -15,6 +15,7 @@ import CoursesPage from './pages/CoursesPage';
 import ContactPage from './pages/ContactPage';
 import AdminDashboard from './pages/AdminDashboard';
 import DraftsPage from './pages/DraftPage';
+import VideoPlayerPage from './pages/VideoPlayerPage';
 
 // Protected Route Component
 const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -97,6 +98,7 @@ function App() {
         {/* Public Routes */}
         <Route path="/" element={<HomePage />} />
         <Route path="/courses" element={<CoursesPage />} />
+        <Route path="/subject/:subjectId/video/:videoId?" element={<VideoPlayerPage />} />
         <Route path="/blog" element={<BlogPage />} />
         <Route path="/blog/:slug" element={<BlogDetailPage />} />
         <Route path="/blog/drafts" element={<DraftsPage />} />

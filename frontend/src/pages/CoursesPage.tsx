@@ -443,66 +443,31 @@ const CoursesPage: React.FC = () => {
                       <button
                         className="watch-button"
                         disabled={!isCourseEnrolled}
-                        onClick={() => setExpandedCourse(isExpanded ? null : course.id)}
+                        onClick={() => {
+                          if (!isAuthenticated) {
+                            navigate('/login', {
+                              state: {
+                                returnTo: `/courses`
+                              }
+                            });
+                            return;
+                          }
+                          if (!isCourseEnrolled) {
+                            alert(t('courses.alert_not_enrolled', "You are not enrolled in this course. Contact admin to request access."));
+                            return;
+                          }
+                          // Navigate to first subject's video player page
+                          const firstSubject = course.subjects[0];
+                          if (firstSubject) {
+                            navigate(`/subject/${firstSubject.id}/video`);
+                          }
+                        }}
                       >
-                        {isExpanded ? t('courses.hide', 'Hide') : t('courses.view_content', 'View content')}
+                        {t('courses.view_content', 'View content')}
                       </button>
                     </div>
-
-                    {/* Expandable Subject/Video List */}
-                    {isExpanded && (
-                      <div className="subject-dropdown">
-                        {course.subjects.map((subject) => (
-                          <div key={subject.id}>
-                            <div className="subject-header-btn">
-                              <span>{subject.title} ({subject.videos.length} {t('courses.word_videos_short', 'videos')})</span>
-                              <span>{subject.hours}h</span>
-                            </div>
-                            <div className="subject-content">
-                              {subject.videos.map((video) => {
-                                const hasAccess = isCourseEnrolled && hasVideoAccess(video);
-                                return (
-                                  <div
-                                    key={video.id}
-                                    className={`video-item ${!hasAccess ? 'locked' : ''}`}
-                                    onClick={() => {
-                                      if (!isAuthenticated) {
-                                        navigate('/login', {
-                                          state: {
-                                            returnTo: `/courses?video=${video.id}`
-                                          }
-                                        });
-                                        return;
-                                      }
-                                      if (!isCourseEnrolled) {
-                                        alert(t('courses.alert_not_enrolled', "You are not enrolled in this course. Contact admin to request access."));
-                                        return;
-                                      }
-                                      if (!hasVideoAccess(video)) {
-                                        alert(t('courses.alert_subject_restricted', "You don't have access to this subject. Contact admin to request access."));
-                                        return;
-                                      }
-                                      handleVideoClick(video);
-                                    }}
-                                    onMouseEnter={() => handleVideoHover(video, true)}
-                                    onMouseLeave={() => handleVideoHover(video, false)}
-                                  >
-                                    <div style={{ display: 'flex', alignItems: 'center', flex: 1 }}>
-                                      <span className="play-icon-small">
-                                        {hasAccess ? '▶' : '🔒'}
-                                      </span>
-                                      <span className="video-title-small">{video.title}</span>
-                                    </div>
-
-                                  </div>
-                                );
-                              })}
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
                   </div>
+
                 </div>
               );
             })}
@@ -510,7 +475,7 @@ const CoursesPage: React.FC = () => {
         )}
       </div>
 
-      {/* Video Player Modal */}
+      {/* Video Player Modal (for preview/hover) */}
       {showVideoPlayer && selectedVideo && (
         <div className="video-player-modal">
           <button className="close-video-btn" onClick={closeVideoPlayer}>
