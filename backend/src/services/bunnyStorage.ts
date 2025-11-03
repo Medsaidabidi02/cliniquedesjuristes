@@ -1,6 +1,7 @@
 import * as ftp from 'basic-ftp';
 import * as fs from 'fs';
 import * as path from 'path';
+import * as os from 'os';
 
 interface BunnyConfig {
   hostname: string;
@@ -42,7 +43,8 @@ class BunnyStorageService {
         user: this.config.username,
         password: this.config.password,
         port: this.config.port,
-        secure: false // Bunny.net uses FTP, not FTPS
+        // NOTE: Using FTP (not FTPS) for development. For production, set secure: true
+        secure: false
       });
 
       console.log('✅ Connected to Bunny.net FTP server');
@@ -97,8 +99,8 @@ class BunnyStorageService {
    * @returns CDN URL of the uploaded file
    */
   async uploadBuffer(buffer: Buffer, remotePath: string): Promise<string> {
-    // Create a temporary file
-    const tempDir = '/tmp/bunny-uploads';
+    // Create a temporary file using OS temp directory for cross-platform compatibility
+    const tempDir = path.join(os.tmpdir(), 'bunny-uploads');
     if (!fs.existsSync(tempDir)) {
       fs.mkdirSync(tempDir, { recursive: true });
     }
