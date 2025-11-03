@@ -221,7 +221,20 @@ export class VideoService {
   getVideoStreamUrl(video: Video): string {
     const videoPath = video.video_path || video.file_path;
     if (videoPath) {
-      // Use the streaming endpoint for better video delivery
+      // Check if it's a Bunny.net path
+      if (videoPath.startsWith('/videos/') || videoPath.startsWith('http')) {
+        // It's a Bunny.net path - use CDN URL
+        if (videoPath.startsWith('http')) {
+          return videoPath;
+        }
+        const cdnHostname = 'cliniquedesjuristesvideos.b-cdn.net';
+        const cleanPath = videoPath.startsWith('/') ? videoPath.substring(1) : videoPath;
+        const cdnUrl = `https://${cdnHostname}/${cleanPath}`;
+        console.log(`🎬 Generated Bunny.net CDN URL for video ${video.id} for Azizkh07: ${cdnUrl}`);
+        return cdnUrl;
+      }
+      
+      // Legacy: Use the streaming endpoint for local files
       const streamUrl = `${window.location.origin}/api/videos/stream/${videoPath}`;
       console.log(`🎬 Generated stream URL for video ${video.id} for Azizkh07: ${streamUrl}`);
       return streamUrl;
@@ -249,7 +262,16 @@ export class VideoService {
         return video.thumbnail_path;
       }
       
-      // Use the thumbnail endpoint for better delivery
+      // Check if it's a Bunny.net path
+      if (video.thumbnail_path.startsWith('/thumbnails/')) {
+        const cdnHostname = 'cliniquedesjuristesvideos.b-cdn.net';
+        const cleanPath = video.thumbnail_path.startsWith('/') ? video.thumbnail_path.substring(1) : video.thumbnail_path;
+        const cdnUrl = `https://${cdnHostname}/${cleanPath}`;
+        console.log(`🖼️ Generated Bunny.net thumbnail URL for video ${video.id} for Azizkh07: ${cdnUrl}`);
+        return cdnUrl;
+      }
+      
+      // Legacy: Use the thumbnail endpoint for local delivery
       const thumbnailUrl = `${window.location.origin}/api/videos/thumbnail/${video.thumbnail_path}`;
       console.log(`🖼️ Generated thumbnail URL for video ${video.id} for Azizkh07: ${thumbnailUrl}`);
       return thumbnailUrl;
