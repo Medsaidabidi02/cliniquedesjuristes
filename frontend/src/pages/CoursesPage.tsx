@@ -4,7 +4,6 @@ import { useTranslation } from 'react-i18next';
 import { api, getErrorMessage } from '../lib/api';
 import { videoService, Video } from '../lib/videoService';
 import VideoPreview from '../components/VideoPreview';
-import ProfessionalVideoPlayer from '../components/ProfessionalVideoPlayer';
 import { useAuth } from '../lib/AuthContext';
 import '../styles/CoursesPage.css';
 import Header from '../components/Header';
@@ -47,8 +46,6 @@ const CoursesPage: React.FC = () => {
   const [courses, setCourses] = useState<CourseWithData[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [selectedVideo, setSelectedVideo] = useState<Video | null>(null);
-  const [showVideoPlayer, setShowVideoPlayer] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [enrolledCourseIds, setEnrolledCourseIds] = useState<Set<number>>(new Set());
   const [enrollmentData, setEnrollmentData] = useState<Map<number, EnrollmentData>>(new Map());
@@ -189,7 +186,7 @@ const CoursesPage: React.FC = () => {
     if (!isAuthenticated) {
       navigate('/login', {
         state: {
-          returnTo: `/courses?video=${video.id}`,
+          returnTo: `/course/${video.course_id}/video/${video.id}`,
           message: t('courses.login_required_message', 'Please log in to watch the full video')
         }
       });
@@ -210,8 +207,8 @@ const CoursesPage: React.FC = () => {
       return;
     }
 
-    setSelectedVideo(video);
-    setShowVideoPlayer(true);
+    // Navigate to video player page
+    navigate(`/course/${courseId}/video/${video.id}`);
   };
 
   const handleVideoHover = (video: Video, isHovering: boolean) => {
@@ -242,11 +239,6 @@ const CoursesPage: React.FC = () => {
       }
       setHoveredVideo(null);
     }
-  };
-
-  const closeVideoPlayer = () => {
-    setShowVideoPlayer(false);
-    setSelectedVideo(null);
   };
 
   const getCategoriesArray = (): string[] => {
@@ -469,7 +461,7 @@ const CoursesPage: React.FC = () => {
                                       if (!isAuthenticated) {
                                         navigate('/login', {
                                           state: {
-                                            returnTo: `/courses?video=${video.id}`
+                                            returnTo: `/course/${course.id}/video/${video.id}`
                                           }
                                         });
                                         return;
@@ -509,24 +501,6 @@ const CoursesPage: React.FC = () => {
           </div>
         )}
       </div>
-
-      {/* Video Player Modal */}
-      {showVideoPlayer && selectedVideo && (
-        <div className="video-player-modal">
-          <button className="close-video-btn" onClick={closeVideoPlayer}>
-            ×
-          </button>
-          <div className="video-player-container">
-            <ProfessionalVideoPlayer
-              video={selectedVideo}
-              isAuthenticated={isAuthenticated}
-              onClose={closeVideoPlayer}
-              className="w-full h-full"
-              autoPlay={true}
-            />
-          </div>
-        </div>
-      )}
     </div>
   );
 };

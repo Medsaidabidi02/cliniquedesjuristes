@@ -285,6 +285,7 @@ const ProfessionalVideoPlayer: React.FC<ProfessionalVideoPlayerProps> = ({
         handleVolumeChange(Math.max(0, volume - 0.1));
         break;
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentTime, duration, volume, isAuthenticated, isFullscreen, onClose]);
 
   useEffect(() => {
@@ -311,9 +312,20 @@ const ProfessionalVideoPlayer: React.FC<ProfessionalVideoPlayerProps> = ({
 
   // Get video stream URL
   const getVideoUrl = () => {
+    const videoPath = video.video_path || video.file_path;
+    
+    // Check if it's already a full Bunny.net URL
+    if (videoPath && videoPath.startsWith('https://')) {
+      console.log(`📺 Using Bunny.net CDN URL: ${videoPath}`);
+      return videoPath;
+    }
+    
+    // Legacy: construct streaming URL for local files
     const baseUrl = process.env.REACT_APP_API_URL || 'http://localhost:5001';
-    const filename = video.video_path.split('/').pop();
-    return `${baseUrl}/api/videos/stream/${filename}`;
+    const filename = videoPath ? videoPath.split('/').pop() : '';
+    const streamUrl = `${baseUrl}/api/videos/stream/${filename}`;
+    console.log(`📺 Using local stream URL: ${streamUrl}`);
+    return streamUrl;
   };
 
   return (

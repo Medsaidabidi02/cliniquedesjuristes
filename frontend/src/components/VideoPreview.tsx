@@ -24,15 +24,30 @@ const VideoPreview: React.FC<VideoPreviewProps> = ({
   console.log(`🎬 VideoPreview for ${video.title} - Azizkh07 at 2025-08-20 14:30:38`);
 
   const getVideoUrl = () => {
+    const videoPath = video.video_path || video.file_path;
+    
+    // Check if it's already a full Bunny.net URL
+    if (videoPath && videoPath.startsWith('https://')) {
+      return videoPath;
+    }
+    
+    // Legacy: construct streaming URL for local files
     const baseUrl = process.env.REACT_APP_API_URL || 'http://localhost:5001';
-    const filename = video.video_path.split('/').pop();
+    const filename = videoPath ? videoPath.split('/').pop() : '';
     return `${baseUrl}/api/videos/stream/${filename}`;
   };
 
   const getThumbnailUrl = () => {
     if (video.thumbnail_path) {
+      // Check if it's already a full Bunny.net URL
+      if (video.thumbnail_path.startsWith('https://')) {
+        return video.thumbnail_path;
+      }
+      
+      // Legacy: construct URL for local thumbnails
       const baseUrl = process.env.REACT_APP_API_URL || 'http://localhost:5001';
-      return `${baseUrl}/api/videos/thumbnail/${video.thumbnail_path}`;
+      const filename = video.thumbnail_path.split('/').pop();
+      return `${baseUrl}/api/videos/thumbnail/${filename}`;
     }
     return '/api/placeholder/320/180';
   };
