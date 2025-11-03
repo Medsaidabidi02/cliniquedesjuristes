@@ -11,6 +11,13 @@ npm install
 
 **IMPORTANT**: You must create a `.env` file before running the application.
 
+**For Windows users:**
+```cmd
+setup-windows.bat
+```
+This will automatically create the `.env` file and test the connection.
+
+**For Mac/Linux users:**
 ```bash
 # Copy the example .env file
 cp .env.example .env
@@ -29,11 +36,12 @@ node setup-bunny-storage.js
 ```
 
 This will:
+- Check if .env file exists
 - Test the connection to Bunny.net Storage
 - Create the recommended folder structure
 - Verify your credentials
 
-**Note**: If you get an error about missing environment variables, make sure you completed step 2 above.
+**Note**: If you get an error, the script will tell you exactly what to do.
 
 ### 4. Run the Application
 ```bash
@@ -47,15 +55,46 @@ npm run dev
 
 ## Common Issues
 
+### ❌ Error: .env file not found
+
+**This is the most common issue!**
+
+**Solution**:
+
+On Windows:
+```cmd
+copy .env.example .env
+```
+
+On Mac/Linux:
+```bash
+cp .env.example .env
+```
+
+Or simply run the Windows setup script:
+```cmd
+setup-windows.bat
+```
+
+After creating the file, you only need to update `DATABASE_URL` with your database credentials. The Bunny.net credentials are already configured.
+
 ### ❌ Error: BUNNY_STORAGE_USERNAME and BUNNY_STORAGE_PASSWORD must be set
 
 **This means the `.env` file is missing!**
 
 **Solution**:
 1. Copy the example file:
+   
+   Windows:
+   ```cmd
+   copy .env.example .env
+   ```
+   
+   Mac/Linux:
    ```bash
    cp .env.example .env
    ```
+
 2. Verify the file was created:
    ```bash
    ls -la .env

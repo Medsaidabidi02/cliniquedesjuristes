@@ -3,13 +3,44 @@
  * Run with: node setup-bunny-storage.js
  */
 
+const fs = require('fs');
+const path = require('path');
+
+// First, check if .env file exists
+const envPath = path.join(__dirname, '.env');
+const envExamplePath = path.join(__dirname, '.env.example');
+
+console.log('🐰 Bunny.net Storage Setup & Connection Test\n');
+console.log('📁 Checking configuration files...\n');
+
+if (!fs.existsSync(envPath)) {
+  console.error('❌ ERROR: .env file not found!\n');
+  
+  if (fs.existsSync(envExamplePath)) {
+    console.error('✅ Good news: .env.example exists\n');
+    console.error('📋 SOLUTION: Please create your .env file by copying the example:\n');
+    console.error('   On Windows:');
+    console.error('   copy .env.example .env\n');
+    console.error('   On Mac/Linux:');
+    console.error('   cp .env.example .env\n');
+    console.error('Then run this script again: node setup-bunny-storage.js\n');
+  } else {
+    console.error('❌ ERROR: .env.example file also not found!');
+    console.error('   Please make sure you have the latest code from the repository.\n');
+  }
+  
+  process.exit(1);
+}
+
+console.log('✅ .env file found\n');
+
 // Load environment variables from .env file
 require('dotenv').config();
 
 const ftp = require('basic-ftp');
 
 async function testBunnyConnection() {
-  console.log('🐰 Testing Bunny.net Storage Connection...\n');
+  console.log('🔍 Testing Bunny.net Storage Connection...\n');
 
   // Check if environment variables are set
   const hostname = process.env.BUNNY_STORAGE_HOSTNAME;
@@ -24,12 +55,13 @@ async function testBunnyConnection() {
   console.log(`   Port: ${port}\n`);
 
   if (!username || !password) {
-    console.error('❌ ERROR: BUNNY_STORAGE_USERNAME and BUNNY_STORAGE_PASSWORD must be set');
-    console.error('\nPlease follow these steps:');
-    console.error('1. Copy .env.example to .env');
-    console.error('   cp .env.example .env');
-    console.error('2. Edit .env and update DATABASE_URL with your database credentials');
-    console.error('3. The Bunny.net credentials are already configured in .env.example\n');
+    console.error('❌ ERROR: BUNNY_STORAGE_USERNAME and BUNNY_STORAGE_PASSWORD are not set in .env file');
+    console.error('\n📋 SOLUTION:');
+    console.error('1. Open the .env file in a text editor');
+    console.error('2. Make sure these lines exist:');
+    console.error('   BUNNY_STORAGE_USERNAME=cliniquedesjuristesvideos');
+    console.error('   BUNNY_STORAGE_PASSWORD=2618a218-10c8-469a-93538a7ae921-7c28-499e');
+    console.error('3. Save the file and run this script again\n');
     process.exit(1);
   }
 
