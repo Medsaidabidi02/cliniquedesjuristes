@@ -218,10 +218,23 @@ export class VideoService {
   }
 
   // Get video stream URL for playback
-  getVideoStreamUrl(video: Video): string {
+  async getVideoStreamUrl(video: Video): Promise<string> {
     const videoPath = video.video_path || video.file_path;
     if (videoPath) {
-      // Use the streaming endpoint for better video delivery
+      // Check if this is a Bunny.net path (starts with /videos/)
+      if (videoPath.startsWith('/videos/') || videoPath.startsWith('/thumbnails/')) {
+        // Use Bunny.net streaming endpoint with signed URL
+        try {
+          const response = await api.get<{streamUrl: string}>(`/api/videos/bunny/stream/${video.id}`);
+          console.log(`🎬 Got Bunny.net signed stream URL for video ${video.id} for Azizkh07`);
+          return response.streamUrl;
+        } catch (error) {
+          console.error(`❌ Error getting Bunny.net stream URL for video ${video.id}:`, error);
+          // Fallback to legacy stream URL
+        }
+      }
+      
+      // Legacy: Use the local streaming endpoint
       const streamUrl = `${window.location.origin}/api/videos/stream/${videoPath}`;
       console.log(`🎬 Generated stream URL for video ${video.id} for Azizkh07: ${streamUrl}`);
       return streamUrl;
@@ -249,7 +262,15 @@ export class VideoService {
         return video.thumbnail_path;
       }
       
-      // Use the thumbnail endpoint for better delivery
+      // Check if this is a Bunny.net path
+      if (video.thumbnail_path.startsWith('/thumbnails/')) {
+        // Return Bunny.net CDN URL (thumbnails are public)
+        const cdnUrl = `https://cliniquedesjuristesvideos.b-cdn.net${video.thumbnail_path}`;
+        console.log(`🖼️ Generated Bunny.net thumbnail URL for video ${video.id} for Azizkh07: ${cdnUrl}`);
+        return cdnUrl;
+      }
+      
+      // Legacy: Use the thumbnail endpoint for better delivery
       const thumbnailUrl = `${window.location.origin}/api/videos/thumbnail/${video.thumbnail_path}`;
       console.log(`🖼️ Generated thumbnail URL for video ${video.id} for Azizkh07: ${thumbnailUrl}`);
       return thumbnailUrl;
@@ -278,7 +299,8 @@ export class VideoService {
   // Upload video with progress tracking
   async uploadVideo(
     videoData: FormData, 
-    onProgress?: (percentage: number) => void
+    onProgress?: (percentage: number) => void,
+    useBunny: boolean = true
   ): Promise<Video> {
     try {
       console.log('📤 Starting video upload for Azizkh07 at 2025-08-20 14:16:05...');
@@ -309,12 +331,13 @@ export class VideoService {
             try {
               const result = JSON.parse(xhr.responseText);
               console.log('✅ Video uploaded successfully for Azizkh07 at 2025-08-20 14:16:05:', {
-                id: result.id,
-                title: result.title,
-                video_path: result.video_path,
-                file_size: result.file_size
+                id: result.id || result.data?.id,
+                title: result.title || result.data?.title,
+                video_path: result.video_path || result.data?.video_path,
+                file_size: result.file_size || result.data?.file_size
               });
-              resolve(result);
+              // Support both direct response and nested data response
+              resolve(result.data || result);
             } catch (parseError) {
               console.error('❌ Error parsing upload response for Azizkh07 at 2025-08-20 14:16:05:', parseError);
               reject(new Error('Invalid response format from server'));
@@ -345,7 +368,8 @@ export class VideoService {
         });
         
         // Set up the request
-        xhr.open('POST', '/api/videos');
+        const endpoint = useBunny ? '/api/videos/bunny/upload' : '/api/videos';
+        xhr.open('POST', endpoint);
         xhr.timeout = 30 * 60 * 1000; // 30 minutes timeout for large files
         
         // Add auth header if available
@@ -358,7 +382,7 @@ export class VideoService {
         }
         
         // Don't set Content-Type header - let browser set it with boundary for FormData
-        console.log('📤 Sending upload request for Azizkh07 at 2025-08-20 14:16:05...');
+        console.log(`📤 Sending upload request to ${endpoint} for Azizkh07 at 2025-08-20 14:16:05...`);
         xhr.send(videoData);
       });
       

@@ -22,6 +22,36 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
   const [error, setError] = useState<string>('');
   const [hasPlayed, setHasPlayed] = useState(false);
   const [isPreviewMode, setIsPreviewMode] = useState(!isAuthenticated);
+  const [videoUrl, setVideoUrl] = useState<string>('');
+  const [isLoadingUrl, setIsLoadingUrl] = useState(true);
+
+  // Load video URL (may be async for Bunny.net signed URLs)
+  useEffect(() => {
+    const loadVideoUrl = async () => {
+      setIsLoadingUrl(true);
+      try {
+        const url = await videoService.getVideoStreamUrl(video);
+        // Add auth token for authenticated users if needed
+        if (isAuthenticated && url && !url.includes('token=')) {
+          const token = localStorage.getItem('token');
+          if (token) {
+            setVideoUrl(`${url}&auth=${encodeURIComponent(token)}`);
+          } else {
+            setVideoUrl(url);
+          }
+        } else {
+          setVideoUrl(url);
+        }
+      } catch (error) {
+        console.error('Error loading video URL:', error);
+        setError('Error loading video. Please try again.');
+      } finally {
+        setIsLoadingUrl(false);
+      }
+    };
+
+    loadVideoUrl();
+  }, [video, isAuthenticated]);
 
   useEffect(() => {
     const videoElement = videoRef.current;
@@ -101,18 +131,6 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
     setError('Error playing video. Please try again.');
   };
 
-  const getVideoUrl = () => {
-    const streamUrl = videoService.getVideoStreamUrl(video);
-    // Add auth token for authenticated users
-    if (isAuthenticated) {
-      const token = localStorage.getItem('token');
-      if (token) {
-        return `${streamUrl}&auth=${encodeURIComponent(token)}`;
-      }
-    }
-    return streamUrl;
-  };
-
   // Fixed: Removed invalid CSS properties
   const securityStyles: React.CSSProperties = {
     userSelect: 'none',
@@ -126,6 +144,13 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
 
   return (
     <div className={`relative w-full ${className}`} style={securityStyles}>
+      {/* Loading state */}
+      {isLoadingUrl && (
+        <div className="absolute inset-0 bg-black bg-opacity-75 flex items-center justify-center z-30">
+          <div className="text-white">Loading video...</div>
+        </div>
+      )}
+      
       {/* Security overlay to prevent interactions */}
       <div 
         className="absolute inset-0 z-10 pointer-events-none"
@@ -157,10 +182,12 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
         // Additional security attributes
         draggable={false}
       >
-        <source 
-          src={getVideoUrl()}
-          type="video/mp4" 
-        />
+        {videoUrl && (
+          <source 
+            src={videoUrl}
+            type="video/mp4" 
+          />
+        )}
         Your browser does not support the video tag.
       </video>
 
