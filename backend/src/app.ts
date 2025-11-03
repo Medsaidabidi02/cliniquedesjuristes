@@ -10,6 +10,7 @@ import { debugRoutes } from './routes/debug';
 import { authRoutes } from './routes/auth';
 import { blogRoutes } from './routes/blog';
 import { videoRoutes } from './routes/videos';
+import videosBunnyRoutes from './routes/videosBunny';
 import { coursesRoutes } from './routes/courses';
 import { subjectsRoutes } from './routes/subjects';
 
@@ -152,6 +153,11 @@ app.use('/api/auth', authRoutes);
 console.log('✅ Auth routes configured: /api/auth');
 
 // Then other routes that may require authentication
+// Use Bunny.net video routes
+app.use('/api/videos/bunny', videosBunnyRoutes);
+console.log('✅ Bunny.net video routes configured: /api/videos/bunny');
+
+// Legacy video routes (for backward compatibility)
 app.use('/api/videos', videoRoutes);
 console.log('✅ Video routes configured: /api/videos');
 

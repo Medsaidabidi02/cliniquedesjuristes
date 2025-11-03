@@ -4,21 +4,19 @@
   "description": "Backend API for Clinique des Juristes",
   "main": "dist/server.js",
   "proxy": "http://localhost:5001",
-
-
-    "scripts": {
-      "start": "node dist/server.js",
-      "dev": "ts-node-dev --respawn --transpile-only src/server.ts",
-      "dev:simple": "ts-node src/server.ts",
-      "build": "tsc",
-      "build:prod": "npm run build && copyfiles \"uploads/**/*\" dist && copyfiles \".env.production\" dist",
-      "postbuild": "copyfiles \"uploads/**/*\" dist"
-    },
-  
+  "scripts": {
+    "start": "node dist/server.js",
+    "dev": "ts-node-dev --respawn --transpile-only src/server.ts",
+    "dev:simple": "ts-node src/server.ts",
+    "build": "tsc",
+    "build:prod": "npm run build && copyfiles \"uploads/**/*\" dist && copyfiles \".env.production\" dist",
+    "postbuild": "copyfiles \"uploads/**/*\" dist"
+  },
   "engines": {
     "node": ">=12.0.0"
   },
   "dependencies": {
+    "@types/fluent-ffmpeg": "^2.1.28",
     "axios": "^1.11.0",
     "bcrypt": "^5.1.0",
     "cors": "^2.8.5",
@@ -26,6 +24,8 @@
     "dotenv": "^16.3.1",
     "express": "^4.21.2",
     "express-rate-limit": "^6.8.1",
+    "fluent-ffmpeg": "^2.1.3",
+    "form-data": "^4.0.4",
     "fs-extra": "^11.3.1",
     "helmet": "^7.2.0",
     "jsonwebtoken": "^9.0.2",

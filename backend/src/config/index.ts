@@ -17,6 +17,14 @@ export const config = {
     // CHANGED: Increased from 500MB to 5GB (5 * 1024 * 1024 * 1024 bytes)
     maxFileSize: parseInt(process.env.MAX_FILE_SIZE || '5120') * 1024 * 1024, // 5120MB = 5GB
   },
+  bunny: {
+    storageZone: process.env.BUNNY_STORAGE_ZONE || 'cliniquedesjuristesvideos',
+    storageHost: process.env.BUNNY_STORAGE_HOST || 'storage.bunnycdn.com',
+    writeApiKey: process.env.BUNNY_WRITE_API_KEY || '2618a218-10c8-469a-9353-8a7ae921-7c28-499e',
+    readApiKey: process.env.BUNNY_READ_API_KEY || '1fa435e1-2fbd-4c19-afb6-89a73265-0dbb-4756',
+    cdnUrl: process.env.BUNNY_CDN_URL || 'https://cliniquedesjuristesvideos.b-cdn.net',
+    signedUrlExpiration: parseInt(process.env.SIGNED_URL_EXPIRATION || '14400'), // 4 hours
+  },
   admin: {
     defaultEmail: process.env.DEFAULT_ADMIN_EMAIL || 'admin@cliniquejuriste.com',
     defaultPassword: process.env.DEFAULT_ADMIN_PASSWORD || 'admin123',
