@@ -45,6 +45,9 @@ const VideoManagement: React.FC = () => {
   const [showUploadForm, setShowUploadForm] = useState(false);
   const [selectedVideo, setSelectedVideo] = useState<Video | null>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState<number | null>(null);
+  const [videoUrl, setVideoUrl] = useState<string | null>(null);
+  const [videoUrlLoading, setVideoUrlLoading] = useState(false);
+  const [videoUrlError, setVideoUrlError] = useState<string | null>(null);
   
   // Filters
   const [filterCourse, setFilterCourse] = useState<string>('all');
@@ -146,6 +149,46 @@ const VideoManagement: React.FC = () => {
     setVideos(prevVideos => [actualVideo, ...prevVideos]);
     console.log('✅ Video added to UI instantly for Medsaidabidi02');
   };
+
+  // Fetch signed URL for video playback
+  const fetchSignedUrl = async (videoId: number) => {
+    setVideoUrlLoading(true);
+    setVideoUrlError(null);
+    setVideoUrl(null);
+    
+    try {
+      console.log(`🔐 Fetching signed URL for video ${videoId}...`);
+      const response = await api.get(`/api/videos/${videoId}/signed-url`);
+      
+      if (response.data.success && response.data.videoUrl) {
+        setVideoUrl(response.data.videoUrl);
+        console.log('✅ Signed URL fetched successfully');
+      } else {
+        throw new Error('Invalid response from signed URL endpoint');
+      }
+    } catch (error: any) {
+      console.error('❌ Error fetching signed URL:', error);
+      const errorMsg = error.response?.data?.message || error.message || 'Failed to load video';
+      setVideoUrlError(errorMsg);
+      
+      // Show helpful hint
+      if (errorMsg.includes('BUNNY')) {
+        setVideoUrlError(errorMsg + '. Please configure Bunny.net environment variables.');
+      }
+    } finally {
+      setVideoUrlLoading(false);
+    }
+  };
+
+  // Effect to fetch signed URL when video is selected
+  useEffect(() => {
+    if (selectedVideo) {
+      fetchSignedUrl(selectedVideo.id);
+    } else {
+      setVideoUrl(null);
+      setVideoUrlError(null);
+    }
+  }, [selectedVideo]);
 
   const handleDeleteVideo = async (id: number) => {
     try {
@@ -578,45 +621,52 @@ const VideoManagement: React.FC = () => {
                 </button>
               </div>
               
-              {/* ✅ FIXED: Video Player with proper streaming endpoint */}
+              {/* ✅ FIXED: Video Player with Bunny.net signed URL */}
               <div className="aspect-video bg-black rounded-lg overflow-hidden mb-4">
-                <video
-                  controls
-                  className="w-full h-full"
-                  poster={selectedVideo.thumbnail_path ? `/api/videos/thumbnail/${selectedVideo.thumbnail_path}` : undefined}
-                  preload="metadata"
-                  onError={(e) => {
-                    console.error('❌ Video playback error for Medsaidabidi02:', e);
-                    console.error('❌ Video source:', `/api/videos/stream/${selectedVideo.video_path}`);
-                  }}
-                  onLoadStart={() => {
-                    console.log('🎬 Starting to load video for Medsaidabidi02:', selectedVideo.title);
-                  }}
-                  onCanPlay={() => {
-                    console.log('✅ Video ready to play for Medsaidabidi02:', selectedVideo.title);
-                  }}
-                >
-                  <source 
-                    src={`/api/videos/stream/${selectedVideo.video_path}`} 
-                    type="video/mp4" 
-                  />
-                  {/* Fallback for older browsers */}
-                  <source 
-                    src={`/uploads/videos/${selectedVideo.video_path}`} 
-                    type="video/mp4" 
-                  />
-                  <p className="text-white p-4 text-center">
-                    Votre navigateur ne supporte pas la lecture vidéo.
-                    <br />
-                    <a 
-                      href={`/api/videos/stream/${selectedVideo.video_path}`} 
-                      className="underline text-blue-300 hover:text-blue-100 ml-2"
-                      download={selectedVideo.title}
-                    >
-                      📥 Télécharger la vidéo
-                    </a>
-                  </p>
-                </video>
+                {videoUrlLoading && (
+                  <div className="w-full h-full flex items-center justify-center text-white">
+                    <div className="text-center">
+                      <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-white mx-auto mb-4"></div>
+                      <p>Chargement de la vidéo...</p>
+                    </div>
+                  </div>
+                )}
+                
+                {videoUrlError && (
+                  <div className="w-full h-full flex items-center justify-center text-white">
+                    <div className="text-center p-6">
+                      <p className="text-red-400 mb-2">❌ Erreur de chargement</p>
+                      <p className="text-sm">{videoUrlError}</p>
+                    </div>
+                  </div>
+                )}
+                
+                {videoUrl && !videoUrlLoading && !videoUrlError && (
+                  <video
+                    key={videoUrl}
+                    controls
+                    className="w-full h-full"
+                    preload="metadata"
+                    onError={(e) => {
+                      console.error('❌ Video playback error:', e);
+                      setVideoUrlError('Erreur de lecture vidéo');
+                    }}
+                    onLoadStart={() => {
+                      console.log('🎬 Starting to load video:', selectedVideo.title);
+                    }}
+                    onCanPlay={() => {
+                      console.log('✅ Video ready to play:', selectedVideo.title);
+                    }}
+                  >
+                    <source 
+                      src={videoUrl} 
+                      type="video/mp4" 
+                    />
+                    <p className="text-white p-4 text-center">
+                      Votre navigateur ne supporte pas la lecture vidéo.
+                    </p>
+                  </video>
+                )}
               </div>
               
               {/* Video Details */}
