@@ -1,5 +1,8 @@
 import { Router } from 'express';
 import { upload } from '../services/fileUpload';
+import bunnyStorage from '../services/bunnyStorage';
+import bunnySign from '../utils/bunnySign';
+import rateLimit from 'express-rate-limit';
 
 import path from 'path';
 import fs from 'fs';
@@ -493,6 +496,323 @@ router.get('/thumbnail/:filename', (req, res) => {
   } catch (error) {
     console.error(`❌ Thumbnail serving error for Medsaidabidi02:`, error);
     res.status(500).json({ message: 'Error serving thumbnail' });
+  }
+});
+
+// ✅ NEW: Rate limiter for signed URLs (prevent abuse)
+const signedUrlLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 100, // Limit each IP to 100 requests per windowMs
+  message: 'Too many signed URL requests, please try again later.',
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+// ✅ NEW: GET signed URL for secure video playback
+router.get('/:videoId/signed-url', signedUrlLimiter, simpleAuth, async (req, res) => {
+  try {
+    const { videoId } = req.params;
+    const userId = req.user?.id;
+
+    console.log(`🔐 GET /api/videos/${videoId}/signed-url - User: ${userId}`);
+
+    // Check if user is authenticated
+    if (!userId) {
+      console.log('❌ Unauthorized: No user ID');
+      return res.status(401).json({ 
+        success: false,
+        message: 'Authentication required' 
+      });
+    }
+
+    // Get video details from database
+    const videoResult = await database.query(`
+      SELECT 
+        v.*,
+        v.path as bunny_path,
+        c.id as course_id,
+        c.title as course_title
+      FROM videos v
+      LEFT JOIN subjects s ON v.subject_id = s.id
+      LEFT JOIN courses c ON (v.course_id = c.id OR s.course_id = c.id)
+      WHERE v.id = ? AND v.is_active = true
+    `, [videoId]);
+
+    if (videoResult.rows.length === 0) {
+      console.log(`❌ Video ${videoId} not found`);
+      return res.status(404).json({ 
+        success: false,
+        message: 'Video not found' 
+      });
+    }
+
+    const video = videoResult.rows[0];
+
+    // Check if video is locked
+    if (video.is_locked) {
+      console.log(`🔒 Video ${videoId} is locked, checking user enrollment...`);
+      
+      // Check if user has access to this course
+      const enrollmentResult = await database.query(`
+        SELECT uc.id, uc.has_full_access
+        FROM user_courses uc
+        WHERE uc.user_id = ? AND uc.course_id = ?
+      `, [userId, video.course_id]);
+
+      // If user is not enrolled or doesn't have full access, deny
+      if (enrollmentResult.rows.length === 0 || !enrollmentResult.rows[0].has_full_access) {
+        console.log(`❌ User ${userId} does not have access to locked video ${videoId}`);
+        return res.status(403).json({ 
+          success: false,
+          message: 'Access denied. This video requires enrollment or full access.',
+          locked: true
+        });
+      }
+
+      console.log(`✅ User ${userId} has full access to locked video ${videoId}`);
+    }
+
+    // Generate signed URL
+    const videoPath = video.bunny_path || video.path || video.video_path || video.file_path;
+    
+    if (!videoPath) {
+      console.log(`❌ No Bunny.net path found for video ${videoId}`);
+      return res.status(500).json({ 
+        success: false,
+        message: 'Video path not configured' 
+      });
+    }
+
+    // Generate signed URL with 60 minute expiration
+    const signedUrl = bunnySign.generateSignedUrl(videoPath, {
+      expirationMinutes: parseInt(process.env.BUNNY_URL_EXPIRY_MINUTES || '60')
+    });
+
+    // Also generate thumbnail signed URL if available
+    let thumbnailUrl = null;
+    if (video.thumbnail_path) {
+      thumbnailUrl = bunnySign.generateSignedUrl(video.thumbnail_path, {
+        expirationMinutes: 120 // Thumbnails get longer expiry
+      });
+    }
+
+    console.log(`✅ Generated signed URL for video ${videoId}`);
+
+    res.json({
+      success: true,
+      videoUrl: signedUrl,
+      thumbnailUrl,
+      expiresIn: parseInt(process.env.BUNNY_URL_EXPIRY_MINUTES || '60') * 60, // in seconds
+      video: {
+        id: video.id,
+        title: video.title,
+        description: video.description,
+        duration: video.duration,
+        is_locked: video.is_locked
+      }
+    });
+
+  } catch (error) {
+    console.error(`❌ Error generating signed URL:`, error);
+    res.status(500).json({ 
+      success: false,
+      message: 'Failed to generate signed URL',
+      error: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+});
+
+// ✅ NEW: POST upload video to Bunny.net
+router.post('/bunny/upload', simpleAuth, upload.fields([
+  { name: 'video', maxCount: 1 },
+  { name: 'thumbnail', maxCount: 1 }
+]), async (req, res) => {
+  try {
+    const { title, description, course_id, lesson_slug, is_locked } = req.body;
+    const files = req.files as { [fieldname: string]: Express.Multer.File[] };
+
+    console.log('📤 POST /api/videos/bunny/upload - Uploading to Bunny.net');
+    console.log('📝 Data:', { title, course_id, lesson_slug, files: files ? Object.keys(files) : 'no files' });
+
+    // Validate required fields
+    if (!title || !course_id || !lesson_slug) {
+      return res.status(400).json({
+        success: false,
+        message: 'Title, course_id, and lesson_slug are required'
+      });
+    }
+
+    if (!files?.video?.[0]) {
+      return res.status(400).json({
+        success: false,
+        message: 'Video file is required'
+      });
+    }
+
+    const videoFile = files.video[0];
+    const thumbnailFile = files.thumbnail?.[0];
+
+    console.log('📁 Files:', {
+      video: {
+        filename: videoFile.filename,
+        size: (videoFile.size / (1024 * 1024)).toFixed(2) + ' MB',
+        path: videoFile.path
+      },
+      thumbnail: thumbnailFile ? {
+        filename: thumbnailFile.filename,
+        size: (thumbnailFile.size / 1024).toFixed(2) + ' KB',
+        path: thumbnailFile.path
+      } : 'none'
+    });
+
+    // Generate Bunny.net paths
+    const videoFileName = `${lesson_slug}.mp4`;
+    const thumbnailFileName = `${lesson_slug}.jpg`;
+    
+    const bunnyVideoPath = bunnyStorage.generatePath('videos', course_id, videoFileName);
+    const bunnyThumbnailPath = thumbnailFile 
+      ? bunnyStorage.generatePath('thumbnails', course_id, thumbnailFileName)
+      : null;
+
+    console.log('🎯 Bunny.net paths:', { 
+      video: bunnyVideoPath, 
+      thumbnail: bunnyThumbnailPath 
+    });
+
+    // Upload video to Bunny.net
+    console.log('⬆️ Uploading video to Bunny.net...');
+    const videoUploadResult = await bunnyStorage.uploadViaHttp(
+      videoFile.path,
+      bunnyVideoPath
+    );
+
+    if (!videoUploadResult.success) {
+      // Clean up local files
+      try {
+        fs.unlinkSync(videoFile.path);
+        if (thumbnailFile) fs.unlinkSync(thumbnailFile.path);
+      } catch (e) {}
+
+      return res.status(500).json({
+        success: false,
+        message: 'Failed to upload video to Bunny.net',
+        error: videoUploadResult.error
+      });
+    }
+
+    // Upload thumbnail if provided
+    let thumbnailUploadResult = null;
+    if (thumbnailFile && bunnyThumbnailPath) {
+      console.log('⬆️ Uploading thumbnail to Bunny.net...');
+      thumbnailUploadResult = await bunnyStorage.uploadViaHttp(
+        thumbnailFile.path,
+        bunnyThumbnailPath
+      );
+
+      if (!thumbnailUploadResult.success) {
+        console.log('⚠️ Thumbnail upload failed, continuing without thumbnail');
+      }
+    }
+
+    // Insert metadata into database (transactional)
+    console.log('💾 Saving metadata to database...');
+    
+    try {
+      const insertResult = await database.query(`
+        INSERT INTO videos (
+          title, description, course_id, lesson_slug, 
+          filename, path, thumbnail_path,
+          filesize, duration, is_locked, is_active, mime_type
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `, [
+        title.trim(),
+        description?.trim() || '',
+        parseInt(course_id),
+        lesson_slug.trim(),
+        videoFileName,
+        bunnyVideoPath,
+        thumbnailUploadResult?.success ? bunnyThumbnailPath : null,
+        videoFile.size,
+        0, // Duration can be updated later
+        is_locked === 'true' || is_locked === true,
+        true,
+        videoFile.mimetype
+      ]);
+
+      // Get the inserted video ID
+      let videoId = insertResult.insertId;
+      
+      if (!videoId) {
+        const lastIdResult = await database.query('SELECT LAST_INSERT_ID() as id');
+        videoId = lastIdResult.rows[0]?.id;
+      }
+
+      if (!videoId) {
+        throw new Error('Could not determine video ID after insert');
+      }
+
+      // Fetch complete video data
+      const videoResult = await database.query(`
+        SELECT v.*, c.title as course_title
+        FROM videos v
+        LEFT JOIN courses c ON v.course_id = c.id
+        WHERE v.id = ?
+      `, [videoId]);
+
+      const createdVideo = videoResult.rows[0];
+
+      // Clean up local files after successful upload
+      try {
+        fs.unlinkSync(videoFile.path);
+        if (thumbnailFile) fs.unlinkSync(thumbnailFile.path);
+        console.log('🧹 Cleaned up local files');
+      } catch (cleanupError) {
+        console.log('⚠️ Could not clean up local files:', cleanupError);
+      }
+
+      console.log('✅ Video uploaded to Bunny.net and saved to database:', {
+        id: videoId,
+        title: createdVideo.title,
+        path: createdVideo.path
+      });
+
+      return res.status(201).json({
+        success: true,
+        message: 'Video uploaded successfully to Bunny.net',
+        video: createdVideo,
+        bunnyPaths: {
+          video: bunnyVideoPath,
+          thumbnail: bunnyThumbnailPath
+        }
+      });
+
+    } catch (dbError) {
+      console.error('❌ Database error:', dbError);
+      
+      // Attempt to clean up Bunny.net uploads on database failure
+      console.log('🗑️ Cleaning up Bunny.net files due to database error...');
+      await bunnyStorage.deleteFile(bunnyVideoPath);
+      if (bunnyThumbnailPath) await bunnyStorage.deleteFile(bunnyThumbnailPath);
+
+      throw dbError;
+    }
+
+  } catch (error) {
+    console.error('❌ Video upload error:', error);
+
+    // Clean up local files in case of any error
+    try {
+      const files = req.files as { [fieldname: string]: Express.Multer.File[] };
+      if (files?.video?.[0]?.path) fs.unlinkSync(files.video[0].path);
+      if (files?.thumbnail?.[0]?.path) fs.unlinkSync(files.thumbnail[0].path);
+    } catch (e) {}
+
+    return res.status(500).json({
+      success: false,
+      message: 'Video upload failed',
+      error: error instanceof Error ? error.message : 'Unknown error'
+    });
   }
 });
 
