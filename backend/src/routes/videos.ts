@@ -748,11 +748,13 @@ router.post('/bunny/upload', uploadLimiter, simpleAuth, upload.fields([
     console.log('💾 Saving metadata to database...');
     
     try {
+      // Build the INSERT query dynamically based on available columns
+      // Note: We'll use file_path instead of filename for compatibility
       const insertResult = await database.query(`
         INSERT INTO videos (
           title, description, course_id, lesson_slug, 
-          filename, path, thumbnail_path,
-          filesize, duration, is_locked, is_active, mime_type
+          file_path, path, thumbnail_path,
+          file_size, duration, is_locked, is_active, mime_type
         )
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `, [
