@@ -28,6 +28,10 @@ if (!fs.existsSync(distPath)) {
   process.exit(1);
 }
 
+// Load environment variables from .env files
+require('dotenv').config({ path: path.join(__dirname, '.env-1.production') });
+require('dotenv').config(); // Also try .env if it exists
+
 const bunnyStorage = require('./dist/services/bunnyStorage').default;
 
 async function setupBunnyStorage() {
@@ -77,6 +81,13 @@ async function setupBunnyStorage() {
 
   } catch (error) {
     console.error('❌ Setup failed:', error.message);
+    if (error.message.includes('BUNNY_STORAGE')) {
+      console.error('\n💡 Tip: Make sure your .env-1.production or .env file contains:');
+      console.error('   BUNNY_STORAGE_HOSTNAME=storage.bunnycdn.com');
+      console.error('   BUNNY_STORAGE_USERNAME=cliniquedesjuristesvideos');
+      console.error('   BUNNY_STORAGE_PASSWORD=your-password');
+      console.error('   BUNNY_STORAGE_PORT=21\n');
+    }
     process.exit(1);
   }
 }

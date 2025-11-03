@@ -173,14 +173,12 @@ npx ts-node setup-bunny-storage.ts
 ```
 
 This script will:
+- Automatically load environment variables from `.env-1.production` or `.env`
 - Test the connection to Bunny.net
 - Create the required folder structure
 - Display the folder layout
 
-**Note**: If you get an error about missing `dist/` directory, you need to build first:
-```bash
-npm run build
-```
+**Note**: The script automatically loads Bunny.net credentials from your `.env-1.production` file. Make sure this file contains the required environment variables as shown in step 2.
 
 ### 5. Build Frontend
 
