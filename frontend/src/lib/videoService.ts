@@ -1,4 +1,5 @@
 import { api } from './api';
+import { CDN_CONFIG } from '../config';
 
 export interface Video {
   id: number;
@@ -227,19 +228,18 @@ export class VideoService {
         if (videoPath.startsWith('http')) {
           return videoPath;
         }
-        const cdnHostname = 'cliniquedesjuristesvideos.b-cdn.net';
         const cleanPath = videoPath.startsWith('/') ? videoPath.substring(1) : videoPath;
-        const cdnUrl = `https://${cdnHostname}/${cleanPath}`;
-        console.log(`🎬 Generated Bunny.net CDN URL for video ${video.id} for Azizkh07: ${cdnUrl}`);
+        const cdnUrl = `https://${CDN_CONFIG.BUNNY_HOSTNAME}/${cleanPath}`;
+        console.log(`🎬 Generated Bunny.net CDN URL for video ${video.id}: ${cdnUrl}`);
         return cdnUrl;
       }
       
       // Legacy: Use the streaming endpoint for local files
       const streamUrl = `${window.location.origin}/api/videos/stream/${videoPath}`;
-      console.log(`🎬 Generated stream URL for video ${video.id} for Azizkh07: ${streamUrl}`);
+      console.log(`🎬 Generated stream URL for video ${video.id}: ${streamUrl}`);
       return streamUrl;
     }
-    console.log(`⚠️ No video path found for video ${video.id} for Azizkh07`);
+    console.log(`⚠️ No video path found for video ${video.id}`);
     return '';
   }
 
@@ -264,21 +264,20 @@ export class VideoService {
       
       // Check if it's a Bunny.net path
       if (video.thumbnail_path.startsWith('/thumbnails/')) {
-        const cdnHostname = 'cliniquedesjuristesvideos.b-cdn.net';
         const cleanPath = video.thumbnail_path.startsWith('/') ? video.thumbnail_path.substring(1) : video.thumbnail_path;
-        const cdnUrl = `https://${cdnHostname}/${cleanPath}`;
-        console.log(`🖼️ Generated Bunny.net thumbnail URL for video ${video.id} for Azizkh07: ${cdnUrl}`);
+        const cdnUrl = `https://${CDN_CONFIG.BUNNY_HOSTNAME}/${cleanPath}`;
+        console.log(`🖼️ Generated Bunny.net thumbnail URL for video ${video.id}: ${cdnUrl}`);
         return cdnUrl;
       }
       
       // Legacy: Use the thumbnail endpoint for local delivery
       const thumbnailUrl = `${window.location.origin}/api/videos/thumbnail/${video.thumbnail_path}`;
-      console.log(`🖼️ Generated thumbnail URL for video ${video.id} for Azizkh07: ${thumbnailUrl}`);
+      console.log(`🖼️ Generated thumbnail URL for video ${video.id}: ${thumbnailUrl}`);
       return thumbnailUrl;
     }
     
     // Fallback to placeholder
-    console.log(`⚠️ No thumbnail found for video ${video.id} for Azizkh07, using placeholder`);
+    console.log(`⚠️ No thumbnail found for video ${video.id}, using placeholder`);
     return '/api/placeholder/320/180';
   }
 

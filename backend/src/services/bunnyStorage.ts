@@ -16,11 +16,16 @@ class BunnyStorageService {
   constructor() {
     this.config = {
       hostname: process.env.BUNNY_STORAGE_HOSTNAME || 'storage.bunnycdn.com',
-      username: process.env.BUNNY_STORAGE_USERNAME || 'cliniquedesjuristesvideos',
-      password: process.env.BUNNY_STORAGE_PASSWORD || '2618a218-10c8-469a-93538a7ae921-7c28-499e',
+      username: process.env.BUNNY_STORAGE_USERNAME!,
+      password: process.env.BUNNY_STORAGE_PASSWORD!,
       port: parseInt(process.env.BUNNY_STORAGE_PORT || '21'),
       secure: false // FTP mode (not FTPS)
     };
+    
+    // Validate required credentials
+    if (!this.config.username || !this.config.password) {
+      throw new Error('BUNNY_STORAGE_USERNAME and BUNNY_STORAGE_PASSWORD must be set in environment variables');
+    }
   }
 
   /**

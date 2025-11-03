@@ -55,3 +55,8 @@ export const ENV_CONFIG = {
   API_DEBUG: process.env.REACT_APP_DEBUG_API === 'true',
   AUTH_DEBUG: process.env.REACT_APP_DEBUG_AUTH === 'true',
 };
+
+// CDN Configuration
+export const CDN_CONFIG = {
+  BUNNY_HOSTNAME: process.env.REACT_APP_BUNNY_CDN_HOSTNAME || 'cliniquedesjuristesvideos.b-cdn.net',
+};
