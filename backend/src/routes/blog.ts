@@ -5,6 +5,7 @@ import fs from 'fs';
 import jwt from 'jsonwebtoken';
 import database from '../config/database';
 import { upload } from '../services/fileUpload';
+import bunnyStorage from '../services/bunnyStorage';
 
 const router = express.Router();
 const JWT_SECRET = process.env.JWT_SECRET || 'legal-education-platform-super-secret-key-medsaidabidi02-2025-mysql5-version';
@@ -232,16 +233,32 @@ router.get('/admin/stats', authenticateToken, requireAdmin, async (req, res) => 
 // POST /api/blog/upload-image - Upload image for blog content
 router.post('/upload-image', authenticateToken, upload.single('image'), async (req, res) => {
   try {
-    console.log('📤 POST /api/blog/upload-image - Uploading image at 2025-09-09 15:15:29');
+    console.log('📤 POST /api/blog/upload-image - Uploading image to Bunny.net');
     
     if (!req.file) {
       return res.status(400).json({ success: false, error: 'No image file provided' });
     }
     
-    const baseUrl = process.env.BASE_URL || process.env.API_URL || 'http://localhost:5001';
-    const imageUrl = `${baseUrl}/uploads/blog/${req.file.filename}`;
-    console.log(`✅ Blog image uploaded successfully: ${imageUrl}`);
-    res.json({ success: true, imageUrl, data: { imageUrl } });
+    // Upload to Bunny.net
+    const remotePath = `/blog/${req.file.filename}`;
+    const localPath = path.join(__dirname, '../../uploads/blog', req.file.filename);
+    
+    try {
+      const cdnUrl = await bunnyStorage.uploadFile(localPath, remotePath);
+      
+      // Delete local file after successful upload
+      if (fs.existsSync(localPath)) {
+        fs.unlinkSync(localPath);
+      }
+      
+      console.log(`✅ Blog image uploaded to Bunny.net: ${cdnUrl}`);
+      res.json({ success: true, imageUrl: cdnUrl, data: { imageUrl: cdnUrl } });
+    } catch (bunnyError) {
+      console.error('❌ Failed to upload to Bunny.net, using local fallback:', bunnyError);
+      const baseUrl = process.env.BASE_URL || process.env.API_URL || 'http://localhost:5001';
+      const imageUrl = `${baseUrl}/uploads/blog/${req.file.filename}`;
+      res.json({ success: true, imageUrl, data: { imageUrl } });
+    }
   } catch (error) {
     console.error('❌ Error uploading blog image:', error);
     res.status(500).json({ success: false, error: 'Error uploading image' });

@@ -1,6 +1,6 @@
 import { Router } from 'express';
-import { upload } from '../services/fileUpload';
-
+import { upload, uploadVideo, uploadThumbnail } from '../services/fileUpload';
+import bunnyStorage from '../services/bunnyStorage';
 import path from 'path';
 import fs from 'fs';
 import database from '../config/database';
@@ -198,6 +198,21 @@ router.post('/', simpleAuth, upload.fields([
       } : 'none'
     });
     
+    // Get course_id from subject for organized storage
+    const subjectData = subjectCheck.rows[0];
+    const courseResult = await database.query(
+      'SELECT course_id FROM subjects WHERE id = ?',
+      [subject_id]
+    );
+    const courseId = courseResult.rows[0]?.course_id || null;
+    
+    // Upload files to Bunny.net
+    console.log('📤 Uploading files to Bunny.net...');
+    const videoPath = await uploadVideo(videoFile, title, courseId);
+    const thumbnailPath = thumbnailFile ? await uploadThumbnail(thumbnailFile, courseId) : null;
+    
+    console.log('✅ Files uploaded to Bunny.net:', { videoPath, thumbnailPath });
+    
     // Get next order_index for this subject
     const orderResult = await database.query(
       'SELECT COALESCE(MAX(order_index), 0) + 1 as next_order FROM videos WHERE subject_id = ?',
@@ -223,9 +238,9 @@ router.post('/', simpleAuth, upload.fields([
         title.trim(),
         description?.trim() || '',
         parseInt(subject_id),
-        videoFile.filename, // video_path
-        videoFile.filename, // file_path (same value for compatibility)
-        thumbnailFile?.filename || null,
+        videoPath, // video_path - Bunny.net path
+        videoPath, // file_path - same value for compatibility
+        thumbnailPath,
         videoFile.size,
         0, // Duration will need to be calculated separately
         orderIndex,
@@ -270,13 +285,13 @@ router.post('/', simpleAuth, upload.fields([
       
       // Approach 2: If still no ID, try to find the most recent video with our exact data
       if (!videoId) {
-        console.log('🔄 No video ID found, searching by video filename...');
+        console.log('🔄 No video ID found, searching by video path...');
         const searchResult = await database.query(`
           SELECT id FROM videos 
           WHERE video_path = ? AND title = ? AND subject_id = ? 
           ORDER BY created_at DESC 
           LIMIT 1
-        `, [videoFile.filename, title.trim(), parseInt(subject_id)]);
+        `, [videoPath, title.trim(), parseInt(subject_id)]);
         
         if (searchResult.rows && searchResult.rows.length > 0) {
           videoId = searchResult.rows[0].id;
@@ -394,22 +409,44 @@ router.delete('/:id', simpleAuth, async (req, res) => {
     // Delete video record from database
     await database.query('DELETE FROM videos WHERE id = ?', [id]);
     
-    // Try to delete physical files (don't fail if files don't exist)
+    // Try to delete files from Bunny.net and local storage
     try {
       const videoPath = video.video_path || video.file_path;
       if (videoPath) {
-        const fullVideoPath = path.join('uploads/videos', videoPath);
-        if (fs.existsSync(fullVideoPath)) {
-          fs.unlinkSync(fullVideoPath);
-          console.log(`🗑️ Deleted video file: ${fullVideoPath}`);
+        // Delete from Bunny.net if it's a Bunny path
+        if (videoPath.startsWith('/videos/')) {
+          try {
+            await bunnyStorage.deleteFile(videoPath);
+            console.log(`🗑️ Deleted video from Bunny.net: ${videoPath}`);
+          } catch (bunnyError) {
+            console.log('⚠️ Could not delete video from Bunny.net:', bunnyError.message);
+          }
+        } else {
+          // Delete local file (legacy)
+          const fullVideoPath = path.join('uploads/videos', videoPath);
+          if (fs.existsSync(fullVideoPath)) {
+            fs.unlinkSync(fullVideoPath);
+            console.log(`🗑️ Deleted local video file: ${fullVideoPath}`);
+          }
         }
       }
       
       if (video.thumbnail_path) {
-        const thumbPath = path.join('uploads/thumbnails', video.thumbnail_path);
-        if (fs.existsSync(thumbPath)) {
-          fs.unlinkSync(thumbPath);
-          console.log(`🗑️ Deleted thumbnail file: ${thumbPath}`);
+        // Delete from Bunny.net if it's a Bunny path
+        if (video.thumbnail_path.startsWith('/thumbnails/')) {
+          try {
+            await bunnyStorage.deleteFile(video.thumbnail_path);
+            console.log(`🗑️ Deleted thumbnail from Bunny.net: ${video.thumbnail_path}`);
+          } catch (bunnyError) {
+            console.log('⚠️ Could not delete thumbnail from Bunny.net:', bunnyError.message);
+          }
+        } else {
+          // Delete local file (legacy)
+          const thumbPath = path.join('uploads/thumbnails', video.thumbnail_path);
+          if (fs.existsSync(thumbPath)) {
+            fs.unlinkSync(thumbPath);
+            console.log(`🗑️ Deleted local thumbnail file: ${thumbPath}`);
+          }
         }
       }
     } catch (fileError) {
@@ -428,13 +465,23 @@ router.delete('/:id', simpleAuth, async (req, res) => {
   }
 });
 
-// ✅ FIXED: Serve video files with streaming support
-router.get('/stream/:filename', (req, res) => {
+// ✅ UPDATED: Serve video files - redirect to Bunny.net CDN or stream local files
+router.get('/stream/:filename', async (req, res) => {
   try {
     const { filename } = req.params;
-    const videoPath = path.join('uploads/videos', filename);
     
     console.log(`🎬 Streaming video for Medsaidabidi02: ${filename} at 2025-09-09 17:15:30`);
+    
+    // Check if this is a Bunny.net path (starts with /videos/)
+    if (filename.startsWith('/videos/') || filename.includes('/videos/')) {
+      // It's a Bunny.net path - redirect to CDN URL
+      const cdnUrl = bunnyStorage.getCdnUrl(filename);
+      console.log(`🔄 Redirecting to Bunny.net CDN: ${cdnUrl}`);
+      return res.redirect(cdnUrl);
+    }
+    
+    // Legacy: Try local file streaming
+    const videoPath = path.join('uploads/videos', filename);
     
     if (!fs.existsSync(videoPath)) {
       console.log(`❌ Video file not found: ${videoPath}`);
@@ -475,13 +522,23 @@ router.get('/stream/:filename', (req, res) => {
   }
 });
 
-// ✅ ADDED: Serve thumbnail files
+// ✅ UPDATED: Serve thumbnail files - redirect to Bunny.net CDN or serve local files
 router.get('/thumbnail/:filename', (req, res) => {
   try {
     const { filename } = req.params;
-    const thumbnailPath = path.join('uploads/thumbnails', filename);
     
     console.log(`🖼️ Serving thumbnail for Medsaidabidi02: ${filename} at 2025-09-09 17:15:30`);
+    
+    // Check if this is a Bunny.net path
+    if (filename.startsWith('/thumbnails/') || filename.includes('/thumbnails/')) {
+      // It's a Bunny.net path - redirect to CDN URL
+      const cdnUrl = bunnyStorage.getCdnUrl(filename);
+      console.log(`🔄 Redirecting to Bunny.net CDN: ${cdnUrl}`);
+      return res.redirect(cdnUrl);
+    }
+    
+    // Legacy: Try local file
+    const thumbnailPath = path.join('uploads/thumbnails', filename);
     
     if (!fs.existsSync(thumbnailPath)) {
       console.log(`❌ Thumbnail file not found: ${thumbnailPath}`);

@@ -3,6 +3,7 @@ import path from 'path';
 import fs from 'fs';
 import database from '../config/database';
 import { optionalAuth } from '../middleware/auth';
+import bunnyStorage from '../services/bunnyStorage';
 
 const router = Router();
 
@@ -59,7 +60,19 @@ router.get('/stream-protected/:filename', optionalAuth, async (req: any, res) =>
       }
     }
 
-    // Stream the file
+    // Stream the file - check if it's a Bunny.net path or local path
+    const videoPathFromDB = video.video_path || video.file_path;
+    
+    // If it's a Bunny.net path, redirect to CDN
+    if (videoPathFromDB && (videoPathFromDB.startsWith('/videos/') || videoPathFromDB.startsWith('http'))) {
+      const cdnUrl = videoPathFromDB.startsWith('http') 
+        ? videoPathFromDB 
+        : bunnyStorage.getCdnUrl(videoPathFromDB);
+      console.log(`🔄 Redirecting to Bunny.net CDN: ${cdnUrl}`);
+      return res.redirect(cdnUrl);
+    }
+    
+    // Legacy: Stream from local file
     const videoPath = path.join('uploads/videos', filename);
     if (!fs.existsSync(videoPath)) {
       return res.status(404).json({ message: 'Video file not found' });
