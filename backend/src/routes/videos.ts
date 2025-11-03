@@ -614,10 +614,14 @@ router.get('/:videoId/signed-url', signedUrlLimiter, simpleAuth, async (req, res
 
   } catch (error) {
     console.error(`❌ Error generating signed URL:`, error);
+    
+    // Log detailed error server-side only
+    const isDevelopment = process.env.NODE_ENV === 'development';
+    
     res.status(500).json({ 
       success: false,
       message: 'Failed to generate signed URL',
-      error: error instanceof Error ? error.message : 'Unknown error'
+      ...(isDevelopment && { error: error instanceof Error ? error.message : 'Unknown error' })
     });
   }
 });

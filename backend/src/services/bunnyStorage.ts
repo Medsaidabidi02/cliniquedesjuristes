@@ -33,13 +33,22 @@ class BunnyStorageService {
   constructor() {
     this.config = {
       hostname: process.env.BUNNY_HOSTNAME || 'storage.bunnycdn.com',
-      username: process.env.BUNNY_USERNAME || 'cliniquedesjuristesvideos',
-      password: process.env.BUNNY_PASSWORD || '2618a218-10c8-469a-93538a7ae921-7c28-499e',
-      readOnlyPassword: process.env.BUNNY_READONLY_PASSWORD || '1fa435e1-2fbd-4c19-afb689a73265-0dbb-4756',
+      username: process.env.BUNNY_USERNAME || '',
+      password: process.env.BUNNY_PASSWORD || '',
+      readOnlyPassword: process.env.BUNNY_READONLY_PASSWORD || '',
       port: parseInt(process.env.BUNNY_PORT || '21'),
-      storageZone: process.env.BUNNY_STORAGE_ZONE || 'cliniquedesjuristesvideos',
+      storageZone: process.env.BUNNY_STORAGE_ZONE || '',
       pullZoneUrl: process.env.BUNNY_PULL_ZONE_URL
     };
+
+    // Validate required configuration
+    if (!this.config.username || !this.config.password) {
+      throw new Error('BUNNY_USERNAME and BUNNY_PASSWORD environment variables are required');
+    }
+
+    if (!this.config.storageZone) {
+      throw new Error('BUNNY_STORAGE_ZONE environment variable is required');
+    }
 
     this.storageApiUrl = `https://storage.bunnycdn.com/${this.config.storageZone}`;
   }

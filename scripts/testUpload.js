@@ -105,25 +105,29 @@ async function testUpload() {
       log('\n2️⃣ Verifying file exists on Bunny.net...', 'yellow');
       
       const bunnyCheckUrl = `https://storage.bunnycdn.com/cliniquedesjuristesvideos${response.data.bunnyPaths.video}`;
-      const bunnyPassword = process.env.BUNNY_READONLY_PASSWORD || '1fa435e1-2fbd-4c19-afb689a73265-0dbb-4756';
+      const bunnyPassword = process.env.BUNNY_READONLY_PASSWORD;
       
-      try {
-        const checkResponse = await axios.head(bunnyCheckUrl, {
-          headers: {
-            'AccessKey': bunnyPassword
+      if (!bunnyPassword) {
+        log('⚠️ BUNNY_READONLY_PASSWORD not set, skipping file verification', 'yellow');
+      } else {
+        try {
+          const checkResponse = await axios.head(bunnyCheckUrl, {
+            headers: {
+              'AccessKey': bunnyPassword
+            }
+          });
+          
+          if (checkResponse.status === 200) {
+            log('✅ File verified on Bunny.net!', 'green');
+          } else {
+            log(`⚠️ Unexpected status: ${checkResponse.status}`, 'yellow');
           }
-        });
-        
-        if (checkResponse.status === 200) {
-          log('✅ File verified on Bunny.net!', 'green');
-        } else {
-          log(`⚠️ Unexpected status: ${checkResponse.status}`, 'yellow');
-        }
-      } catch (checkError) {
-        if (checkError.response?.status === 404) {
-          log('❌ File not found on Bunny.net!', 'red');
-        } else {
-          log(`⚠️ Could not verify file: ${checkError.message}`, 'yellow');
+        } catch (checkError) {
+          if (checkError.response?.status === 404) {
+            log('❌ File not found on Bunny.net!', 'red');
+          } else {
+            log(`⚠️ Could not verify file: ${checkError.message}`, 'yellow');
+          }
         }
       }
 

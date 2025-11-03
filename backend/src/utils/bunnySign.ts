@@ -17,9 +17,22 @@ class BunnySignService {
   private storageZone: string;
 
   constructor() {
-    this.securityKey = process.env.BUNNY_SECURITY_KEY || process.env.BUNNY_PASSWORD || '2618a218-10c8-469a-93538a7ae921-7c28-499e';
-    this.pullZoneUrl = process.env.BUNNY_PULL_ZONE_URL || 'https://cliniquedesjuristesvideos.b-cdn.net';
-    this.storageZone = process.env.BUNNY_STORAGE_ZONE || 'cliniquedesjuristesvideos';
+    this.securityKey = process.env.BUNNY_SECURITY_KEY || process.env.BUNNY_PASSWORD || '';
+    this.pullZoneUrl = process.env.BUNNY_PULL_ZONE_URL || '';
+    this.storageZone = process.env.BUNNY_STORAGE_ZONE || '';
+
+    // Validate required configuration
+    if (!this.securityKey) {
+      throw new Error('BUNNY_SECURITY_KEY or BUNNY_PASSWORD environment variable is required');
+    }
+
+    if (!this.pullZoneUrl) {
+      throw new Error('BUNNY_PULL_ZONE_URL environment variable is required');
+    }
+
+    if (!this.storageZone) {
+      throw new Error('BUNNY_STORAGE_ZONE environment variable is required');
+    }
   }
 
   /**

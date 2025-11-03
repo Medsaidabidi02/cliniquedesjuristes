@@ -34,6 +34,7 @@ const CoursePlayerPage: React.FC = () => {
   const [videos, setVideos] = useState<Video[]>([]);
   const [currentVideo, setCurrentVideo] = useState<Video | null>(null);
   const [signedUrl, setSignedUrl] = useState<string | null>(null);
+  const [thumbnailUrl, setThumbnailUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadingVideo, setLoadingVideo] = useState(false);
   const [error, setError] = useState<string>('');
@@ -84,12 +85,18 @@ const CoursePlayerPage: React.FC = () => {
       setError('');
       setCurrentVideo(video);
       setSignedUrl(null);
+      setThumbnailUrl(null);
 
       // Request signed URL from backend
       const response = await api.get(`/api/videos/${video.id}/signed-url`);
 
       if (response.success) {
         setSignedUrl(response.videoUrl);
+        
+        // Use thumbnail URL from API response if available
+        if (response.thumbnailUrl) {
+          setThumbnailUrl(response.thumbnailUrl);
+        }
         
         // Wait for video element to be ready
         setTimeout(() => {
@@ -113,6 +120,7 @@ const CoursePlayerPage: React.FC = () => {
       }
       
       setSignedUrl(null);
+      setThumbnailUrl(null);
     } finally {
       setLoadingVideo(false);
     }
@@ -202,7 +210,7 @@ const CoursePlayerPage: React.FC = () => {
                   controls
                   preload="none"
                   className="video-player"
-                  poster={currentVideo?.thumbnail_path ? signedUrl.replace(/\/videos\/.*$/, `/thumbnails/${currentVideo.thumbnail_path}`) : undefined}
+                  poster={thumbnailUrl || undefined}
                 >
                   <source src={signedUrl} type="video/mp4" />
                   Votre navigateur ne supporte pas la lecture vidéo.

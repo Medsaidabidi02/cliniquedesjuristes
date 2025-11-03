@@ -10,7 +10,7 @@ CREATE TABLE IF NOT EXISTS videos (
   title VARCHAR(500) NOT NULL,
   description TEXT,
   filename VARCHAR(500) NOT NULL,
-  path VARCHAR(1000) NOT NULL COMMENT 'Path on Bunny.net storage',
+  path VARCHAR(1000) COMMENT 'Path on Bunny.net storage',
   filesize BIGINT DEFAULT 0,
   duration INT DEFAULT 0 COMMENT 'Duration in seconds',
   thumbnail_path VARCHAR(1000) COMMENT 'Path to thumbnail on Bunny.net',
