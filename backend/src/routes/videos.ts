@@ -626,8 +626,17 @@ router.get('/:videoId/signed-url', signedUrlLimiter, simpleAuth, async (req, res
   }
 });
 
+// ✅ Rate limiter for upload endpoint
+const uploadLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000, // 1 hour
+  max: 50, // Limit each IP to 50 uploads per hour
+  message: 'Too many upload requests, please try again later.',
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
 // ✅ NEW: POST upload video to Bunny.net
-router.post('/bunny/upload', simpleAuth, upload.fields([
+router.post('/bunny/upload', uploadLimiter, simpleAuth, upload.fields([
   { name: 'video', maxCount: 1 },
   { name: 'thumbnail', maxCount: 1 }
 ]), async (req, res) => {
@@ -643,6 +652,23 @@ router.post('/bunny/upload', simpleAuth, upload.fields([
       return res.status(400).json({
         success: false,
         message: 'Title, course_id, and lesson_slug are required'
+      });
+    }
+
+    // Validate lesson_slug format to prevent path traversal
+    if (!/^[a-z0-9-]+$/.test(lesson_slug)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid lesson_slug format. Only lowercase letters, numbers, and hyphens are allowed.'
+      });
+    }
+
+    // Validate course_id is a positive integer
+    const courseIdNum = parseInt(course_id);
+    if (isNaN(courseIdNum) || courseIdNum <= 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid course_id. Must be a positive integer.'
       });
     }
 

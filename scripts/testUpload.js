@@ -63,7 +63,7 @@ function createTestVideo() {
 async function testUpload() {
   try {
     log('\n📤 Testing Bunny.net Upload...', 'blue');
-    log('=' .repeat(50), 'blue');
+    log('='.repeat(50), 'blue');
 
     // Create test files
     const { videoPath, thumbnailPath } = createTestVideo();

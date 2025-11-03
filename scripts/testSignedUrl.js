@@ -221,7 +221,7 @@ async function testRateLimiting() {
  */
 async function runAllTests() {
   log('\n🔐 Testing Signed URL Generation', 'blue');
-  log('=' .repeat(50), 'blue');
+  log('='.repeat(50), 'blue');
 
   const results = {
     unlocked: false,

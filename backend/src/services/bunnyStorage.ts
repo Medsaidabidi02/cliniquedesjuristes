@@ -54,18 +54,39 @@ class BunnyStorageService {
   }
 
   /**
+   * Sanitize filename to prevent path traversal
+   */
+  private sanitizeFilename(filename: string): string {
+    // Remove any path components and only keep the filename
+    return filename.replace(/^.*[\\/]/, '').replace(/[^a-zA-Z0-9._-]/g, '-');
+  }
+
+  /**
    * Generate proper file path for Bunny.net storage
    */
   generatePath(type: 'videos' | 'thumbnails' | 'materials' | 'avatars', courseId: number | string, filename: string): string {
+    // Validate courseId
+    const courseIdNum = typeof courseId === 'string' ? parseInt(courseId) : courseId;
+    if (isNaN(courseIdNum) || courseIdNum <= 0) {
+      throw new Error('Invalid courseId: must be a positive integer');
+    }
+
+    // Sanitize filename to prevent path traversal
+    const safeFilename = this.sanitizeFilename(filename);
+    
+    if (!safeFilename) {
+      throw new Error('Invalid filename after sanitization');
+    }
+
     switch (type) {
       case 'videos':
-        return `/videos/${courseId}/${filename}`;
+        return `/videos/${courseIdNum}/${safeFilename}`;
       case 'thumbnails':
-        return `/thumbnails/${courseId}/${filename}`;
+        return `/thumbnails/${courseIdNum}/${safeFilename}`;
       case 'materials':
-        return `/materials/${courseId}/${filename}`;
+        return `/materials/${courseIdNum}/${safeFilename}`;
       case 'avatars':
-        return `/avatars/${courseId}/${filename}`;
+        return `/avatars/${courseIdNum}/${safeFilename}`;
       default:
         throw new Error(`Unknown file type: ${type}`);
     }
