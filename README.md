@@ -4,6 +4,12 @@
 
 This application uses Bunny.net for video storage and streaming. All videos and thumbnails are stored on Bunny.net CDN for optimal performance and global delivery.
 
+### ⚠️ Important: Configuration Required
+
+**If you're getting "Failed to upload video to Bunny.net" error**, you need to configure Bunny.net credentials first.
+
+👉 **See [BUNNY_SETUP_GUIDE.md](./BUNNY_SETUP_GUIDE.md) for step-by-step setup instructions**
+
 ### Features
 
 - **Secure Video Streaming**: Time-limited signed URLs for video playback

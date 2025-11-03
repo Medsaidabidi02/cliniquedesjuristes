@@ -27,10 +27,22 @@ interface FileInfo {
 }
 
 class BunnyStorageService {
-  private config: BunnyConfig;
-  private storageApiUrl: string;
+  private config: BunnyConfig | null = null;
+  private storageApiUrl: string = '';
+  private initError: Error | null = null;
 
   constructor() {
+    // Lazy initialization - don't fail on import
+    try {
+      this.initialize();
+    } catch (error) {
+      this.initError = error instanceof Error ? error : new Error('Failed to initialize Bunny.net service');
+      console.warn('⚠️ Bunny.net service initialization failed:', this.initError.message);
+      console.warn('⚠️ Bunny.net uploads will not work until environment variables are configured');
+    }
+  }
+
+  private initialize() {
     this.config = {
       hostname: process.env.BUNNY_HOSTNAME || 'storage.bunnycdn.com',
       username: process.env.BUNNY_USERNAME || '',
@@ -43,14 +55,23 @@ class BunnyStorageService {
 
     // Validate required configuration
     if (!this.config.username || !this.config.password) {
-      throw new Error('BUNNY_USERNAME and BUNNY_PASSWORD environment variables are required');
+      throw new Error('BUNNY_USERNAME and BUNNY_PASSWORD environment variables are required. Please configure them in your .env file.');
     }
 
     if (!this.config.storageZone) {
-      throw new Error('BUNNY_STORAGE_ZONE environment variable is required');
+      throw new Error('BUNNY_STORAGE_ZONE environment variable is required. Please configure it in your .env file.');
     }
 
     this.storageApiUrl = `https://storage.bunnycdn.com/${this.config.storageZone}`;
+  }
+
+  private ensureInitialized(): void {
+    if (this.initError) {
+      throw new Error(`Bunny.net service is not configured: ${this.initError.message}`);
+    }
+    if (!this.config) {
+      throw new Error('Bunny.net service is not initialized');
+    }
   }
 
   /**
@@ -65,6 +86,8 @@ class BunnyStorageService {
    * Generate proper file path for Bunny.net storage
    */
   generatePath(type: 'videos' | 'thumbnails' | 'materials' | 'avatars', courseId: number | string, filename: string): string {
+    this.ensureInitialized();
+    
     // Validate courseId
     const courseIdNum = typeof courseId === 'string' ? parseInt(courseId) : courseId;
     if (isNaN(courseIdNum) || courseIdNum <= 0) {
@@ -100,6 +123,8 @@ class BunnyStorageService {
     remotePath: string,
     retries: number = 3
   ): Promise<UploadResult> {
+    this.ensureInitialized();
+    
     let lastError: any;
 
     for (let attempt = 1; attempt <= retries; attempt++) {
@@ -111,7 +136,7 @@ class BunnyStorageService {
 
         const response = await axios.put(url, fileData, {
           headers: {
-            'AccessKey': this.config.password,
+            'AccessKey': this.config!.password,
             'Content-Type': 'application/octet-stream',
           },
           maxContentLength: Infinity,
@@ -156,6 +181,8 @@ class BunnyStorageService {
     remotePath: string,
     retries: number = 3
   ): Promise<UploadResult> {
+    this.ensureInitialized();
+    
     const client = new ftp.Client();
     client.ftp.verbose = false;
     let lastError: any;
@@ -165,10 +192,10 @@ class BunnyStorageService {
         console.log(`📤 Uploading via FTP (attempt ${attempt}/${retries}): ${remotePath}`);
 
         await client.access({
-          host: this.config.hostname,
-          user: this.config.username,
-          password: this.config.password,
-          port: this.config.port,
+          host: this.config!.hostname,
+          user: this.config!.username,
+          password: this.config!.password,
+          port: this.config!.port,
           secure: false,
           secureOptions: { rejectUnauthorized: false }
         });
@@ -219,13 +246,15 @@ class BunnyStorageService {
    * Delete file from Bunny.net storage
    */
   async deleteFile(remotePath: string): Promise<boolean> {
+    this.ensureInitialized();
+    
     try {
       console.log(`🗑️ Deleting from Bunny.net: ${remotePath}`);
       const url = `${this.storageApiUrl}${remotePath}`;
 
       await axios.delete(url, {
         headers: {
-          'AccessKey': this.config.password
+          'AccessKey': this.config!.password
         }
       });
 
@@ -242,11 +271,13 @@ class BunnyStorageService {
    * Check if file exists on Bunny.net
    */
   async fileExists(remotePath: string): Promise<boolean> {
+    this.ensureInitialized();
+    
     try {
       const url = `${this.storageApiUrl}${remotePath}`;
       const response = await axios.head(url, {
         headers: {
-          'AccessKey': this.config.readOnlyPassword
+          'AccessKey': this.config!.readOnlyPassword
         }
       });
 
@@ -260,11 +291,13 @@ class BunnyStorageService {
    * List files in a directory
    */
   async listFiles(remotePath: string): Promise<FileInfo[]> {
+    this.ensureInitialized();
+    
     try {
       const url = `${this.storageApiUrl}${remotePath}/`;
       const response = await axios.get(url, {
         headers: {
-          'AccessKey': this.config.readOnlyPassword
+          'AccessKey': this.config!.readOnlyPassword
         }
       });
 
@@ -287,11 +320,13 @@ class BunnyStorageService {
    * Get public URL for a file (for non-signed access)
    */
   getPublicUrl(remotePath: string): string {
-    if (this.config.pullZoneUrl) {
-      return `${this.config.pullZoneUrl}${remotePath}`;
+    this.ensureInitialized();
+    
+    if (this.config!.pullZoneUrl) {
+      return `${this.config!.pullZoneUrl}${remotePath}`;
     }
     // Fallback to storage URL
-    return `https://${this.config.storageZone}.b-cdn.net${remotePath}`;
+    return `https://${this.config!.storageZone}.b-cdn.net${remotePath}`;
   }
 
   /**
