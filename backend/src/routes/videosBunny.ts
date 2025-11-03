@@ -26,6 +26,19 @@ const simpleAuth = (req: any, res: any, next: any) => {
 };
 
 /**
+ * Sanitize filename to prevent path traversal attacks
+ * @param filename Original filename from user
+ * @returns Sanitized filename safe for file operations
+ */
+function sanitizeFilename(filename: string): string {
+  // Remove any path components (../, ..\, etc)
+  const basename = path.basename(filename);
+  // Remove any characters that could be used for path traversal
+  const sanitized = basename.replace(/[^a-zA-Z0-9_.-]/g, '_');
+  return sanitized;
+}
+
+/**
  * Upload video to Bunny.net Storage
  * Handles video file upload, thumbnail generation, and metadata storage
  */
@@ -87,9 +100,14 @@ router.post('/upload', simpleAuth, upload.fields([
     const videoFile = files.video[0];
     const thumbnailFile = files.thumbnail?.[0];
     
+    // Sanitize filenames to prevent path traversal
+    const sanitizedVideoName = sanitizeFilename(videoFile.originalname);
+    const sanitizedThumbName = thumbnailFile ? sanitizeFilename(thumbnailFile.originalname) : null;
+    
     console.log('📁 Files:', {
       video: {
         originalname: videoFile.originalname,
+        sanitized: sanitizedVideoName,
         filename: videoFile.filename,
         size: (videoFile.size / (1024 * 1024)).toFixed(2) + ' MB',
         mimetype: videoFile.mimetype,
@@ -97,6 +115,7 @@ router.post('/upload', simpleAuth, upload.fields([
       },
       thumbnail: thumbnailFile ? {
         originalname: thumbnailFile.originalname,
+        sanitized: sanitizedThumbName,
         filename: thumbnailFile.filename,
         size: (thumbnailFile.size / 1024).toFixed(2) + ' KB',
         mimetype: thumbnailFile.mimetype
@@ -107,8 +126,8 @@ router.post('/upload', simpleAuth, upload.fields([
     console.log('📖 Reading video file...');
     videoFileBuffer = fs.readFileSync(videoFile.path);
     
-    // Generate video path in Bunny.net
-    const videoPath = bunnyStorage.generateVideoPath(courseId, videoFile.originalname);
+    // Generate video path in Bunny.net using sanitized filename
+    const videoPath = bunnyStorage.generateVideoPath(courseId, sanitizedVideoName);
     console.log(`📍 Video will be uploaded to: ${videoPath}`);
     
     // Upload video to Bunny.net
@@ -135,10 +154,10 @@ router.post('/upload', simpleAuth, upload.fields([
     // Handle thumbnail
     let thumbnailPath: string | null = null;
     if (thumbnailFile) {
-      // User provided thumbnail
+      // User provided thumbnail - use sanitized name
       console.log('📖 Reading user-provided thumbnail...');
       thumbnailFileBuffer = fs.readFileSync(thumbnailFile.path);
-      thumbnailPath = bunnyStorage.generateThumbnailPath(courseId, videoFile.originalname);
+      thumbnailPath = bunnyStorage.generateThumbnailPath(courseId, sanitizedVideoName);
       
       console.log('☁️ Uploading thumbnail to Bunny.net...');
       const thumbnailCdnUrl = await bunnyStorage.uploadFileToBunny({
@@ -149,7 +168,7 @@ router.post('/upload', simpleAuth, upload.fields([
       uploadedThumbnailPath = thumbnailPath;
       console.log(`✅ Thumbnail uploaded: ${thumbnailCdnUrl}`);
     } else {
-      // Generate thumbnail from video
+      // Generate thumbnail from video - use sanitized name
       try {
         console.log('🎨 Generating thumbnail from video...');
         thumbnailFileBuffer = await thumbnailGenerator.generateThumbnailFromVideo({
@@ -159,7 +178,7 @@ router.post('/upload', simpleAuth, upload.fields([
           height: 360
         });
         
-        thumbnailPath = bunnyStorage.generateThumbnailPath(courseId, videoFile.originalname);
+        thumbnailPath = bunnyStorage.generateThumbnailPath(courseId, sanitizedVideoName);
         
         console.log('☁️ Uploading generated thumbnail to Bunny.net...');
         const thumbnailCdnUrl = await bunnyStorage.uploadFileToBunny({

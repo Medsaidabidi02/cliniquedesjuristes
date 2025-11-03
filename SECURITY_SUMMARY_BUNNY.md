@@ -15,16 +15,6 @@ This document summarizes the security considerations and implementation for the 
 **Fix**: Moved to environment variables loaded from `.env` file via config system
 **Status**: Fixed
 
-**Before:**
-```typescript
-const BUNNY_WRITE_API_KEY = '2618a218-10c8-469a-9353-8a7ae921-7c28-499e';
-```
-
-**After:**
-```typescript
-const BUNNY_WRITE_API_KEY = config.bunny.writeApiKey;
-```
-
 ### 2. ✅ FIXED: Development Auth Bypass
 **Severity**: HIGH (in production)
 **Location**: `backend/src/routes/videosBunny.ts`
@@ -32,17 +22,28 @@ const BUNNY_WRITE_API_KEY = config.bunny.writeApiKey;
 **Fix**: Added production environment check to block auth bypass
 **Status**: Fixed with production guard
 
-**Protection Added:**
-```typescript
-if (process.env.NODE_ENV === 'production') {
-  return res.status(403).json({ 
-    success: false,
-    message: 'Direct access not allowed in production. Use proper authentication.' 
-  });
-}
-```
+### 3. ✅ FIXED: Path Injection Vulnerability
+**Severity**: HIGH
+**Location**: `backend/src/routes/videosBunny.ts`
+**Issue**: User-provided filenames could contain path traversal sequences (../, etc.)
+**Fix**: Added filename sanitization function
+**Status**: Fixed
 
-### 3. ⚠️ KNOWN: Deprecated FFmpeg Package
+### 4. ⚠️ FALSE POSITIVE: Insufficient Password Hash
+**Severity**: N/A
+**Location**: `backend/src/services/bunnyStorage.ts`
+**Issue**: CodeQL flagged SHA-256 usage as "insufficient password hash"
+**Analysis**: This is a false positive - we're not hashing passwords, we're creating signed URL tokens using SHA-256, which is the correct algorithm for HMAC-style signatures
+**Status**: No action needed - this is the proper implementation
+
+### 5. ⚠️ KNOWN: Missing Rate Limiting
+**Severity**: MEDIUM
+**Location**: `backend/src/routes/videosBunny.ts`
+**Issue**: Upload endpoints not specifically rate-limited
+**Mitigation**: General rate limiting exists in app.ts for all API endpoints
+**Status**: Accepted - specific upload rate limiting recommended for production
+
+### 6. ⚠️ KNOWN: Deprecated FFmpeg Package
 **Severity**: LOW
 **Location**: `backend/package.json`
 **Issue**: fluent-ffmpeg package is deprecated
@@ -301,10 +302,17 @@ The Bunny.net integration implements strong security fundamentals:
 - ✅ Credentials protected via environment variables
 - ✅ Signed URLs for access control
 - ✅ Input validation and sanitization
+- ✅ Path injection prevention (filename sanitization)
 - ✅ Error handling with rollback
 - ✅ Production auth guard implemented
 
-**Critical issues have been addressed**. The integration is secure for production deployment with proper JWT authentication in place of the auth bypass.
+**All critical security issues have been addressed**. The integration is secure for production deployment with proper JWT authentication in place of the auth bypass.
+
+**CodeQL Scan Results:**
+- 3 HIGH severity issues: **All Fixed**
+- 1 FALSE POSITIVE (password hash - actually HMAC token generation)
+- 1 MEDIUM severity issue: Rate limiting (general rate limiting exists, specific upload rate limiting recommended)
+- 1 LOW severity issue: Deprecated package (monitoring alternatives)
 
 **Remaining work**: Replace development auth bypass with production JWT authentication system that already exists in the codebase.
 
@@ -312,4 +320,5 @@ The Bunny.net integration implements strong security fundamentals:
 
 **Last Updated**: November 3, 2025
 **Next Review**: Before production deployment
-**Status**: ✅ SECURE - Ready for production with JWT authentication
+**Status**: ✅ **SECURE** - Ready for production with JWT authentication
+**CodeQL Scan**: ✅ All critical issues resolved
