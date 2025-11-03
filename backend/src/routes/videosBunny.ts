@@ -10,9 +10,17 @@ const router = Router();
 
 console.log('🎬 Bunny.net Video Upload API loaded - 2025-11-03');
 
-// Simple auth bypass for development
+// Development-only auth bypass - MUST BE DISABLED IN PRODUCTION
 const simpleAuth = (req: any, res: any, next: any) => {
-  console.log('🔓 Using simple auth bypass for videos - Bunny.net version');
+  // In production, this should use proper JWT authentication
+  if (process.env.NODE_ENV === 'production') {
+    return res.status(403).json({ 
+      success: false,
+      message: 'Direct access not allowed in production. Use proper authentication.' 
+    });
+  }
+  
+  console.log('🔓 DEV ONLY: Using auth bypass for videos - Bunny.net version');
   req.user = { id: 1, name: 'Admin', email: 'admin@cliniquejuriste.com', is_admin: true };
   next();
 };

@@ -11,14 +11,22 @@
 
 const axios = require('axios');
 const crypto = require('crypto');
+require('dotenv').config();
 
-// Bunny.net configuration
-const BUNNY_STORAGE_ZONE = 'cliniquedesjuristesvideos';
-const BUNNY_STORAGE_HOST = 'storage.bunnycdn.com';
-const BUNNY_WRITE_API_KEY = '2618a218-10c8-469a-9353-8a7ae921-7c28-499e';
-const BUNNY_READ_API_KEY = '1fa435e1-2fbd-4c19-afb6-89a73265-0dbb-4756';
-const BUNNY_CDN_URL = `https://${BUNNY_STORAGE_ZONE}.b-cdn.net`;
+// Bunny.net configuration - loaded from environment
+const BUNNY_STORAGE_ZONE = process.env.BUNNY_STORAGE_ZONE || 'cliniquedesjuristesvideos';
+const BUNNY_STORAGE_HOST = process.env.BUNNY_STORAGE_HOST || 'storage.bunnycdn.com';
+const BUNNY_WRITE_API_KEY = process.env.BUNNY_WRITE_API_KEY;
+const BUNNY_READ_API_KEY = process.env.BUNNY_READ_API_KEY;
+const BUNNY_CDN_URL = process.env.BUNNY_CDN_URL || `https://${BUNNY_STORAGE_ZONE}.b-cdn.net`;
 const BUNNY_API_BASE = `https://${BUNNY_STORAGE_HOST}/${BUNNY_STORAGE_ZONE}`;
+
+// Validate credentials
+if (!BUNNY_WRITE_API_KEY || !BUNNY_READ_API_KEY) {
+  console.error('❌ Error: Bunny.net API keys not found in environment variables');
+  console.error('Please set BUNNY_WRITE_API_KEY and BUNNY_READ_API_KEY in your .env file');
+  process.exit(1);
+}
 
 async function testBunnyStorage() {
   console.log('🧪 Testing Bunny.net Storage Integration\n');

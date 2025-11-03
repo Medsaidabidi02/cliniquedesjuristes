@@ -2,13 +2,14 @@ import axios, { AxiosError } from 'axios';
 import FormData from 'form-data';
 import crypto from 'crypto';
 import path from 'path';
+import { config } from '../config';
 
-// Bunny.net Storage API Configuration
-const BUNNY_STORAGE_ZONE = 'cliniquedesjuristesvideos';
-const BUNNY_STORAGE_HOST = 'storage.bunnycdn.com';
-const BUNNY_WRITE_API_KEY = '2618a218-10c8-469a-9353-8a7ae921-7c28-499e';
-const BUNNY_READ_API_KEY = '1fa435e1-2fbd-4c19-afb6-89a73265-0dbb-4756';
-const BUNNY_CDN_URL = `https://${BUNNY_STORAGE_ZONE}.b-cdn.net`;
+// Bunny.net Storage API Configuration - loaded from environment
+const BUNNY_STORAGE_ZONE = config.bunny.storageZone;
+const BUNNY_STORAGE_HOST = config.bunny.storageHost;
+const BUNNY_WRITE_API_KEY = config.bunny.writeApiKey;
+const BUNNY_READ_API_KEY = config.bunny.readApiKey;
+const BUNNY_CDN_URL = config.bunny.cdnUrl;
 
 // Base URL for Bunny.net Storage API
 const BUNNY_API_BASE = `https://${BUNNY_STORAGE_HOST}/${BUNNY_STORAGE_ZONE}`;
