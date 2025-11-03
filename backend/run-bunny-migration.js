@@ -142,22 +142,45 @@ async function runMigration() {
 
     // Update path field to match video_path or file_path for existing records
     console.log('📝 Updating existing records with path...');
-    const [result2] = await connection.query(`
-      UPDATE videos 
-      SET path = COALESCE(video_path, file_path, filename) 
-      WHERE path IS NULL OR path = ''
-    `);
-    console.log(`✅ Updated ${result2.affectedRows} records with path\n`);
+    
+    // Check which columns exist to build the COALESCE query dynamically
+    const pathSourceColumns = ['video_path', 'file_path', 'filename', 'file_name'];
+    const existingPathColumns = pathSourceColumns.filter(col => columnNames.includes(col));
+    
+    if (existingPathColumns.length > 0) {
+      const coalesceFields = existingPathColumns.join(', ');
+      const [result2] = await connection.query(`
+        UPDATE videos 
+        SET path = COALESCE(${coalesceFields}) 
+        WHERE path IS NULL OR path = ''
+      `);
+      console.log(`✅ Updated ${result2.affectedRows} records with path\n`);
+    } else {
+      console.log('⚠️  No source columns found for path, skipping update...\n');
+    }
 
     // Ensure all videos have a course_id (fallback to subject's course_id if available)
     console.log('📝 Updating course_id from subjects...');
-    const [result3] = await connection.query(`
-      UPDATE videos v
-      LEFT JOIN subjects s ON v.subject_id = s.id
-      SET v.course_id = s.course_id
-      WHERE (v.course_id IS NULL OR v.course_id = 0) AND s.course_id IS NOT NULL
-    `);
-    console.log(`✅ Updated ${result3.affectedRows} records with course_id\n`);
+    
+    try {
+      // Check if subjects table exists
+      const [subjectsTables] = await connection.query(`SHOW TABLES LIKE 'subjects'`);
+      
+      if (subjectsTables.length > 0 && columnNames.includes('subject_id')) {
+        const [result3] = await connection.query(`
+          UPDATE videos v
+          LEFT JOIN subjects s ON v.subject_id = s.id
+          SET v.course_id = s.course_id
+          WHERE (v.course_id IS NULL OR v.course_id = 0) AND s.course_id IS NOT NULL
+        `);
+        console.log(`✅ Updated ${result3.affectedRows} records with course_id\n`);
+      } else {
+        console.log('⚠️  Subjects table not found or subject_id column missing, skipping course_id update...\n');
+      }
+    } catch (error) {
+      console.log('⚠️  Could not update course_id from subjects:', error.message);
+      console.log('   This is not critical - you can set course_id manually when uploading videos.\n');
+    }
 
     // Verify final structure
     console.log('🔍 Verifying final table structure...');
