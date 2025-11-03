@@ -1,34 +1,19 @@
 /**
- * Bunny.net Storage Setup Script
+ * Bunny.net Storage Setup Script (TypeScript version)
  * 
  * This script tests the connection to Bunny.net storage and sets up
  * the required folder structure for the educational platform.
  * 
- * Usage:
- *   1. First build the backend: npm run build
- *   2. Then run this script: node setup-bunny-storage.js
- * 
- * Alternative (without building):
- *   npx ts-node setup-bunny-storage.ts
+ * Usage: npx ts-node setup-bunny-storage.ts
  */
 
-// Check if dist directory exists
-const fs = require('fs');
-const path = require('path');
+import bunnyStorage from './src/services/bunnyStorage';
+import dotenv from 'dotenv';
+import path from 'path';
 
-const distPath = path.join(__dirname, 'dist');
-if (!fs.existsSync(distPath)) {
-  console.error('❌ Error: Backend has not been built yet.\n');
-  console.error('Please run the following commands first:');
-  console.error('  1. npm install');
-  console.error('  2. npm run build');
-  console.error('  3. node setup-bunny-storage.js\n');
-  console.error('Alternatively, you can run directly with TypeScript:');
-  console.error('  npx ts-node setup-bunny-storage.ts\n');
-  process.exit(1);
-}
-
-const bunnyStorage = require('./dist/services/bunnyStorage').default;
+// Load environment variables
+dotenv.config({ path: path.join(__dirname, '.env-1.production') });
+dotenv.config(); // Also try .env if exists
 
 async function setupBunnyStorage() {
   console.log('🚀 Starting Bunny.net Storage Setup...\n');
@@ -75,8 +60,15 @@ async function setupBunnyStorage() {
     console.log('📌 Example video URL: https://cliniquedesjuristesvideos.b-cdn.net/videos/course-1/video.mp4');
     console.log('📌 Example thumbnail URL: https://cliniquedesjuristesvideos.b-cdn.net/thumbnails/course-1/thumb.jpg\n');
 
-  } catch (error) {
+  } catch (error: any) {
     console.error('❌ Setup failed:', error.message);
+    if (error.message.includes('BUNNY_STORAGE')) {
+      console.error('\n💡 Tip: Make sure your .env file contains:');
+      console.error('   BUNNY_STORAGE_HOSTNAME=storage.bunnycdn.com');
+      console.error('   BUNNY_STORAGE_USERNAME=cliniquedesjuristesvideos');
+      console.error('   BUNNY_STORAGE_PASSWORD=your-password');
+      console.error('   BUNNY_STORAGE_PORT=21\n');
+    }
     process.exit(1);
   }
 }

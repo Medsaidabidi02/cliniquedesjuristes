@@ -159,15 +159,28 @@ npm run build
 
 ### 4. Setup Bunny.net Folder Structure
 
+**Option A: Using JavaScript (requires build first)**
 ```bash
 cd backend
+npm run build
 node setup-bunny-storage.js
+```
+
+**Option B: Using TypeScript (no build required)**
+```bash
+cd backend
+npx ts-node setup-bunny-storage.ts
 ```
 
 This script will:
 - Test the connection to Bunny.net
 - Create the required folder structure
 - Display the folder layout
+
+**Note**: If you get an error about missing `dist/` directory, you need to build first:
+```bash
+npm run build
+```
 
 ### 5. Build Frontend
 
