@@ -252,31 +252,38 @@ const VideoUploadForm: React.FC<VideoUploadFormProps> = ({ onSuccess, onCancel, 
     const selectedSubject = subjects.find(s => s.id.toString() === formData.subject_id);
     const selectedCourseData = courses.find(c => c.id === selectedSubject?.course_id);
     
-    console.log('📤 Starting video upload ', {
+    console.log('📤 Starting video upload to Bunny.net', {
       title: formData.title,
       subject: selectedSubject?.title,
       course: selectedCourseData?.title,
       video_size: (videoFile!.size / (1024 * 1024 * 1024)).toFixed(2) + ' GB',
       has_thumbnail: !!thumbnailFile,
-      timestamp: '2025-09-09 17:00:14'
+      timestamp: new Date().toISOString()
     });
 
     try {
-      // ✅ FIXED: Create FormData for multipart upload
+      // Generate lesson slug from title
+      const lessonSlug = formData.title
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-|-$/g, '');
+
+      // Create FormData for multipart upload to Bunny.net
       const uploadFormData = new FormData();
       uploadFormData.append('title', formData.title);
       uploadFormData.append('description', formData.description);
-      uploadFormData.append('subject_id', formData.subject_id);
-      uploadFormData.append('is_active', formData.is_active.toString());
+      uploadFormData.append('course_id', selectedCourseData?.id.toString() || '');
+      uploadFormData.append('lesson_slug', lessonSlug);
+      uploadFormData.append('is_locked', 'false'); // Set to true if this should be premium content
       uploadFormData.append('video', videoFile!);
       
       if (thumbnailFile) {
         uploadFormData.append('thumbnail', thumbnailFile);
       }
 
-      console.log('📤 Uploading to /api/videos with XMLHttpRequest for progress tracking...');
+      console.log('📤 Uploading to /api/videos/bunny/upload with XMLHttpRequest for progress tracking...');
 
-      // ✅ Use XMLHttpRequest to track upload progress
+      // Use XMLHttpRequest to track upload progress
       const result = await new Promise<any>((resolve, reject) => {
         const xhr = new XMLHttpRequest();
         
@@ -301,7 +308,12 @@ const VideoUploadForm: React.FC<VideoUploadFormProps> = ({ onSuccess, onCancel, 
             }
           } else {
             console.error('❌ Upload response error:', xhr.responseText);
-            reject(new Error(`Upload failed: ${xhr.status} ${xhr.statusText}`));
+            try {
+              const errorResponse = JSON.parse(xhr.responseText);
+              reject(new Error(errorResponse.message || `Upload failed: ${xhr.status} ${xhr.statusText}`));
+            } catch (e) {
+              reject(new Error(`Upload failed: ${xhr.status} ${xhr.statusText}`));
+            }
           }
         });
         
@@ -314,20 +326,19 @@ const VideoUploadForm: React.FC<VideoUploadFormProps> = ({ onSuccess, onCancel, 
           reject(new Error('Upload cancelled'));
         });
         
-        // Send request
-        xhr.open('POST', '/api/videos');
+        // Send request to Bunny.net upload endpoint
+        xhr.open('POST', '/api/videos/bunny/upload');
         xhr.setRequestHeader('Authorization', `Bearer ${localStorage.getItem('authToken') || ''}`);
         xhr.send(uploadFormData);
       });
 
-      // ✅ FIXED: Handle different response structures from MySQL5
+      // Handle response
       let actualVideo;
-      if (result.success && result.data) {
-        // New response format with success flag and data wrapper
-        actualVideo = result.data;
-        console.log('✅ Extracted video from data wrapper:', actualVideo);
+      if (result.success && result.video) {
+        actualVideo = result.video;
+        console.log('✅ Video uploaded to Bunny.net successfully:', actualVideo);
+        console.log('✅ Bunny.net paths:', result.bunnyPaths);
       } else if (result.id) {
-        // Direct video object
         actualVideo = result;
         console.log('✅ Using direct video object:', actualVideo);
       } else {
@@ -335,7 +346,7 @@ const VideoUploadForm: React.FC<VideoUploadFormProps> = ({ onSuccess, onCancel, 
         throw new Error('Unexpected response structure from server');
       }
 
-      console.log('✅ Video uploaded successfully for Medsaidabidi02:', {
+      console.log('✅ Video uploaded successfully to Bunny.net:', {
         id: actualVideo.id,
         title: actualVideo.title,
         subject_id: actualVideo.subject_id
