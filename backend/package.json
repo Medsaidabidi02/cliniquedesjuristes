@@ -4,22 +4,20 @@
   "description": "Backend API for Clinique des Juristes",
   "main": "dist/server.js",
   "proxy": "http://localhost:5001",
-
-
-    "scripts": {
-      "start": "node dist/server.js",
-      "dev": "ts-node-dev --respawn --transpile-only src/server.ts",
-      "dev:simple": "ts-node src/server.ts",
-      "build": "tsc",
-      "build:prod": "npm run build && copyfiles \"uploads/**/*\" dist && copyfiles \".env.production\" dist",
-      "postbuild": "copyfiles \"uploads/**/*\" dist"
-    },
-  
+  "scripts": {
+    "start": "node dist/server.js",
+    "dev": "ts-node-dev --respawn --transpile-only src/server.ts",
+    "dev:simple": "ts-node src/server.ts",
+    "build": "tsc",
+    "build:prod": "npm run build && copyfiles \"uploads/**/*\" dist && copyfiles \".env.production\" dist",
+    "postbuild": "copyfiles \"uploads/**/*\" dist"
+  },
   "engines": {
     "node": ">=12.0.0"
   },
   "dependencies": {
     "axios": "^1.11.0",
+    "basic-ftp": "^5.0.5",
     "bcrypt": "^5.1.0",
     "cors": "^2.8.5",
     "crypto": "^1.0.1",

@@ -2,6 +2,7 @@ import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
 import crypto from 'crypto';
+import bunnyStorage from './bunnyStorage';
 
 // Create uploads directories if they don't exist
 const uploadsDir = path.join(__dirname, '../../uploads');
@@ -73,7 +74,100 @@ export const upload = multer({
     fileSize: 5 * 1024 * 1024 * 1024, // 5GB for videos (changed from 500MB)
   }
 });
-// Helper functions
+// Helper functions for Bunny.net integration
+export const uploadVideoToBunny = async (
+  file: Express.Multer.File, 
+  metadata?: { courseId?: number, subjectId?: number }
+): Promise<{ cdnUrl: string, remotePath: string }> => {
+  try {
+    const remotePath = bunnyStorage.generateRemotePath('video', file.filename, metadata);
+    const cdnUrl = await bunnyStorage.uploadFile(file.path, remotePath);
+    
+    // Clean up local temp file after upload
+    if (fs.existsSync(file.path)) {
+      fs.unlinkSync(file.path);
+      console.log(`🗑️ Cleaned up local temp file: ${file.path}`);
+    }
+    
+    return { cdnUrl, remotePath };
+  } catch (error) {
+    console.error('❌ Failed to upload video to Bunny.net:', error);
+    throw error;
+  }
+};
+
+export const uploadThumbnailToBunny = async (
+  file: Express.Multer.File,
+  metadata?: { courseId?: number, subjectId?: number }
+): Promise<{ cdnUrl: string, remotePath: string }> => {
+  try {
+    const remotePath = bunnyStorage.generateRemotePath('thumbnail', file.filename, metadata);
+    const cdnUrl = await bunnyStorage.uploadFile(file.path, remotePath);
+    
+    // Clean up local temp file after upload
+    if (fs.existsSync(file.path)) {
+      fs.unlinkSync(file.path);
+      console.log(`🗑️ Cleaned up local temp file: ${file.path}`);
+    }
+    
+    return { cdnUrl, remotePath };
+  } catch (error) {
+    console.error('❌ Failed to upload thumbnail to Bunny.net:', error);
+    throw error;
+  }
+};
+
+export const uploadDocumentToBunny = async (
+  file: Express.Multer.File,
+  metadata?: { courseId?: number, subjectId?: number }
+): Promise<{ cdnUrl: string, remotePath: string }> => {
+  try {
+    const remotePath = bunnyStorage.generateRemotePath('document', file.filename, metadata);
+    const cdnUrl = await bunnyStorage.uploadFile(file.path, remotePath);
+    
+    // Clean up local temp file after upload
+    if (fs.existsSync(file.path)) {
+      fs.unlinkSync(file.path);
+      console.log(`🗑️ Cleaned up local temp file: ${file.path}`);
+    }
+    
+    return { cdnUrl, remotePath };
+  } catch (error) {
+    console.error('❌ Failed to upload document to Bunny.net:', error);
+    throw error;
+  }
+};
+
+export const uploadBlogImageToBunny = async (
+  file: Express.Multer.File
+): Promise<{ cdnUrl: string, remotePath: string }> => {
+  try {
+    const remotePath = bunnyStorage.generateRemotePath('blog', file.filename);
+    const cdnUrl = await bunnyStorage.uploadFile(file.path, remotePath);
+    
+    // Clean up local temp file after upload
+    if (fs.existsSync(file.path)) {
+      fs.unlinkSync(file.path);
+      console.log(`🗑️ Cleaned up local temp file: ${file.path}`);
+    }
+    
+    return { cdnUrl, remotePath };
+  } catch (error) {
+    console.error('❌ Failed to upload blog image to Bunny.net:', error);
+    throw error;
+  }
+};
+
+export const deleteFromBunny = async (remotePath: string): Promise<void> => {
+  try {
+    await bunnyStorage.deleteFile(remotePath);
+  } catch (error) {
+    console.error('❌ Failed to delete from Bunny.net:', error);
+    throw error;
+  }
+};
+
+// Legacy helper functions (for backward compatibility)
 export const uploadImage = async (file: Express.Multer.File): Promise<string> => {
   const baseUrl = process.env.BASE_URL || process.env.API_URL || 'http://localhost:5001';
   return `${baseUrl}/uploads/images/${file.filename}`;

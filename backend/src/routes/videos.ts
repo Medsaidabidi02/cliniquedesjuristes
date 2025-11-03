@@ -1,5 +1,6 @@
 import { Router } from 'express';
-import { upload } from '../services/fileUpload';
+import { upload, uploadVideoToBunny, uploadThumbnailToBunny, deleteFromBunny } from '../services/fileUpload';
+import bunnyStorage from '../services/bunnyStorage';
 
 import path from 'path';
 import fs from 'fs';
@@ -134,7 +135,7 @@ router.get('/:id', async (req, res) => {
   }
 });
 
-// ✅ ULTRA-FIXED: POST upload new video with bulletproof MySQL5 response handling
+// ✅ ULTRA-FIXED: POST upload new video with Bunny.net integration
 router.post('/', simpleAuth, upload.fields([
   { name: 'video', maxCount: 1 },
   { name: 'thumbnail', maxCount: 1 }
@@ -143,7 +144,7 @@ router.post('/', simpleAuth, upload.fields([
     const { title, description, subject_id, is_active } = req.body;
     const files = req.files as { [fieldname: string]: Express.Multer.File[] };
     
-    console.log('📤 POST /api/videos - Upload for Medsaidabidi02 at 2025-09-09 17:15:30');
+    console.log('📤 POST /api/videos - Upload with Bunny.net integration');
     console.log('📝 Data:', { 
       title, 
       subject_id, 
@@ -168,9 +169,9 @@ router.post('/', simpleAuth, upload.fields([
       });
     }
     
-    // Check if subject exists
+    // Check if subject exists and get course_id
     const subjectCheck = await database.query(
-      'SELECT id, title FROM subjects WHERE id = ?', 
+      'SELECT id, title, course_id FROM subjects WHERE id = ?', 
       [subject_id]
     );
     
@@ -182,10 +183,13 @@ router.post('/', simpleAuth, upload.fields([
       });
     }
     
+    const subject = subjectCheck.rows[0];
+    const courseId = subject.course_id;
+    
     const videoFile = files.video[0];
     const thumbnailFile = files.thumbnail?.[0];
     
-    console.log('📁 Files for Medsaidabidi02:', {
+    console.log('📁 Files:', {
       video: {
         filename: videoFile.filename,
         size: (videoFile.size / (1024 * 1024)).toFixed(2) + ' MB',
@@ -198,6 +202,40 @@ router.post('/', simpleAuth, upload.fields([
       } : 'none'
     });
     
+    // Upload files to Bunny.net
+    console.log('🐰 Uploading to Bunny.net Storage...');
+    let videoCdnUrl: string, videoRemotePath: string;
+    let thumbnailCdnUrl: string | null = null, thumbnailRemotePath: string | null = null;
+    
+    try {
+      // Upload video
+      const videoUploadResult = await uploadVideoToBunny(videoFile, { 
+        courseId, 
+        subjectId: parseInt(subject_id) 
+      });
+      videoCdnUrl = videoUploadResult.cdnUrl;
+      videoRemotePath = videoUploadResult.remotePath;
+      console.log(`✅ Video uploaded to Bunny.net: ${videoCdnUrl}`);
+      
+      // Upload thumbnail if provided
+      if (thumbnailFile) {
+        const thumbnailUploadResult = await uploadThumbnailToBunny(thumbnailFile, { 
+          courseId, 
+          subjectId: parseInt(subject_id) 
+        });
+        thumbnailCdnUrl = thumbnailUploadResult.cdnUrl;
+        thumbnailRemotePath = thumbnailUploadResult.remotePath;
+        console.log(`✅ Thumbnail uploaded to Bunny.net: ${thumbnailCdnUrl}`);
+      }
+    } catch (uploadError) {
+      console.error('❌ Bunny.net upload failed:', uploadError);
+      return res.status(500).json({
+        success: false,
+        message: 'Failed to upload files to Bunny.net',
+        error: uploadError instanceof Error ? uploadError.message : 'Unknown error'
+      });
+    }
+    
     // Get next order_index for this subject
     const orderResult = await database.query(
       'SELECT COALESCE(MAX(order_index), 0) + 1 as next_order FROM videos WHERE subject_id = ?',
@@ -205,14 +243,13 @@ router.post('/', simpleAuth, upload.fields([
     );
     const orderIndex = orderResult.rows[0].next_order;
     
-    console.log('🔄 Inserting video into database...');
+    console.log('🔄 Inserting video record into database...');
     
-    // ✅ ULTRA-FIXED: Use multiple approaches to ensure we get the video ID
     let videoId = null;
     let createdVideo = null;
     
     try {
-      // Approach 1: Try direct INSERT and get insertId
+      // Insert video record with Bunny.net CDN URLs
       const insertResult = await database.query(`
         INSERT INTO videos (
           title, description, subject_id, video_path, file_path, thumbnail_path, 
@@ -223,9 +260,9 @@ router.post('/', simpleAuth, upload.fields([
         title.trim(),
         description?.trim() || '',
         parseInt(subject_id),
-        videoFile.filename, // video_path
-        videoFile.filename, // file_path (same value for compatibility)
-        thumbnailFile?.filename || null,
+        videoCdnUrl, // Store full CDN URL in video_path
+        videoCdnUrl, // Store full CDN URL in file_path for compatibility
+        thumbnailCdnUrl, // Store full CDN URL for thumbnail
         videoFile.size,
         0, // Duration will need to be calculated separately
         orderIndex,
@@ -233,7 +270,7 @@ router.post('/', simpleAuth, upload.fields([
         videoFile.mimetype
       ]);
       
-      console.log('✅ Insert result structure for Medsaidabidi02:', {
+      console.log('✅ Insert result:', {
         type: typeof insertResult,
         keys: Object.keys(insertResult || {}),
         insertResult: insertResult
@@ -380,7 +417,7 @@ router.post('/', simpleAuth, upload.fields([
 router.delete('/:id', simpleAuth, async (req, res) => {
   try {
     const { id } = req.params;
-    console.log(`🗑️ DELETE /api/videos/${id} for Medsaidabidi02 at 2025-09-09 17:15:30`);
+    console.log(`🗑️ DELETE /api/videos/${id}`);
     
     // Get video info before deletion
     const videoInfo = await database.query('SELECT * FROM videos WHERE id = ?', [id]);
@@ -394,47 +431,107 @@ router.delete('/:id', simpleAuth, async (req, res) => {
     // Delete video record from database
     await database.query('DELETE FROM videos WHERE id = ?', [id]);
     
-    // Try to delete physical files (don't fail if files don't exist)
+    // Try to delete files (from Bunny.net or local)
     try {
       const videoPath = video.video_path || video.file_path;
+      
       if (videoPath) {
-        const fullVideoPath = path.join('uploads/videos', videoPath);
-        if (fs.existsSync(fullVideoPath)) {
-          fs.unlinkSync(fullVideoPath);
-          console.log(`🗑️ Deleted video file: ${fullVideoPath}`);
+        // Check if it's a Bunny.net URL
+        if (videoPath.startsWith('https://')) {
+          const remotePath = bunnyStorage.getRemotePathFromUrl(videoPath);
+          await deleteFromBunny(remotePath);
+          console.log(`🗑️ Deleted video from Bunny.net: ${remotePath}`);
+        } else {
+          // Legacy: local file
+          const fullVideoPath = path.join('uploads/videos', videoPath);
+          if (fs.existsSync(fullVideoPath)) {
+            fs.unlinkSync(fullVideoPath);
+            console.log(`🗑️ Deleted local video file: ${fullVideoPath}`);
+          }
         }
       }
       
       if (video.thumbnail_path) {
-        const thumbPath = path.join('uploads/thumbnails', video.thumbnail_path);
-        if (fs.existsSync(thumbPath)) {
-          fs.unlinkSync(thumbPath);
-          console.log(`🗑️ Deleted thumbnail file: ${thumbPath}`);
+        // Check if it's a Bunny.net URL
+        if (video.thumbnail_path.startsWith('https://')) {
+          const remotePath = bunnyStorage.getRemotePathFromUrl(video.thumbnail_path);
+          await deleteFromBunny(remotePath);
+          console.log(`🗑️ Deleted thumbnail from Bunny.net: ${remotePath}`);
+        } else {
+          // Legacy: local file
+          const thumbPath = path.join('uploads/thumbnails', video.thumbnail_path);
+          if (fs.existsSync(thumbPath)) {
+            fs.unlinkSync(thumbPath);
+            console.log(`🗑️ Deleted local thumbnail file: ${thumbPath}`);
+          }
         }
       }
-    } catch (fileError) {
+    } catch (fileError: any) {
       console.log('⚠️ Could not delete physical files (they may not exist):', fileError.message);
     }
     
-    console.log(`✅ Video ${id} deleted successfully for Medsaidabidi02`);
+    console.log(`✅ Video ${id} deleted successfully`);
     res.json({ 
       message: 'Video deleted successfully', 
       video: { id, title: video.title }
     });
     
   } catch (error) {
-    console.error(`❌ Delete error for Medsaidabidi02:`, error);
+    console.error(`❌ Delete error:`, error);
     res.status(500).json({ message: 'Failed to delete video' });
   }
 });
 
-// ✅ FIXED: Serve video files with streaming support
+// ✅ NEW: Get video URL (returns Bunny.net CDN URL or proxies local files)
+router.get('/url/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    console.log(`🎬 Getting video URL for ID: ${id}`);
+    
+    const result = await database.query(
+      'SELECT video_path, file_path FROM videos WHERE id = ? AND is_active = true',
+      [id]
+    );
+    
+    if (result.rows.length === 0) {
+      return res.status(404).json({ message: 'Video not found' });
+    }
+    
+    const video = result.rows[0];
+    const videoPath = video.video_path || video.file_path;
+    
+    // Check if it's a Bunny.net URL (starts with https://)
+    if (videoPath && videoPath.startsWith('https://')) {
+      console.log(`✅ Returning Bunny.net CDN URL: ${videoPath}`);
+      return res.json({ url: videoPath, source: 'bunny' });
+    }
+    
+    // Legacy: local file path
+    const baseUrl = process.env.BASE_URL || process.env.API_URL || 'http://localhost:5001';
+    const localUrl = `${baseUrl}/api/videos/stream/${videoPath}`;
+    console.log(`✅ Returning local stream URL: ${localUrl}`);
+    return res.json({ url: localUrl, source: 'local' });
+    
+  } catch (error) {
+    console.error('❌ Error getting video URL:', error);
+    res.status(500).json({ message: 'Error retrieving video URL' });
+  }
+});
+
+// ✅ FIXED: Serve video files with streaming support (legacy for local files)
 router.get('/stream/:filename', (req, res) => {
   try {
     const { filename } = req.params;
+    
+    // Check if filename is a Bunny.net URL
+    if (filename.startsWith('https://')) {
+      // Redirect to Bunny.net
+      return res.redirect(filename);
+    }
+    
     const videoPath = path.join('uploads/videos', filename);
     
-    console.log(`🎬 Streaming video for Medsaidabidi02: ${filename} at 2025-09-09 17:15:30`);
+    console.log(`🎬 Streaming local video: ${filename}`);
     
     if (!fs.existsSync(videoPath)) {
       console.log(`❌ Video file not found: ${videoPath}`);
