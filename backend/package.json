@@ -11,6 +11,7 @@
     "build": "tsc",
     "build:prod": "npm run build && copyfiles \"uploads/**/*\" dist && copyfiles \".env.production\" dist",
     "postbuild": "copyfiles \"uploads/**/*\" dist",
+    "migrate:bunny": "node run-bunny-migration.js",
     "test:upload": "node ../scripts/testUpload.js",
     "test:signedurl": "node ../scripts/testSignedUrl.js"
   },

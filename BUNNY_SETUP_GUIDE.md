@@ -1,12 +1,43 @@
 # Bunny.net Configuration Guide
 
-## Error: Failed to upload video to Bunny.net
+## Common Errors and Solutions
 
-If you're seeing this error, it means the Bunny.net environment variables are not configured properly. This guide will help you set up Bunny.net integration correctly.
+### Error 1: "Unknown column 'lesson_slug' in 'field list'"
 
-## Quick Fix
+**Solution**: You need to run the database migration first.
 
-The Bunny.net service requires specific environment variables to be configured. Add these to your production environment file:
+```bash
+cd backend
+npm run migrate:bunny
+```
+
+This will add the required `lesson_slug`, `path`, `course_id`, and `is_locked` columns to your videos table.
+
+### Error 2: "Failed to upload video to Bunny.net"
+
+**Solution**: The Bunny.net environment variables are not configured properly. Follow the steps below.
+
+## Complete Setup Guide
+
+### Step 0: Run Database Migration (REQUIRED)
+
+**Before anything else**, you must run the database migration to add the required columns:
+
+```bash
+cd backend
+npm run migrate:bunny
+```
+
+This script will:
+- Add `course_id`, `lesson_slug`, `path`, and `is_locked` columns if missing
+- Create necessary indexes
+- Update existing records with default values
+- Show you the final table structure
+
+**What if the migration fails?**
+- Make sure your MySQL server is running
+- Verify your database credentials in `.env` or `.env-1.production`
+- Check that the `videos` table exists in your database
 
 ### Step 1: Get Your Bunny.net Credentials
 
@@ -70,10 +101,15 @@ npm start    # for production
 
 Try uploading a video again through the admin panel. The upload should now work correctly.
 
-## Understanding the Error
+## Understanding Common Errors
 
-The error "Failed to upload video to Bunny.net" occurs when:
+### "Unknown column 'lesson_slug' in 'field list'"
 
+This means the database migration hasn't been run. Run `npm run migrate:bunny` in the backend directory.
+
+### "Failed to upload video to Bunny.net"
+
+This occurs when:
 1. **Environment variables are missing**: The service cannot initialize without the required credentials
 2. **Credentials are incorrect**: The password or storage zone name is wrong
 3. **Network issues**: Cannot connect to Bunny.net servers

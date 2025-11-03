@@ -69,15 +69,19 @@ BUNNY_URL_EXPIRY_MINUTES=60
 
 #### Database Migration
 
-Run the Bunny.net videos migration:
+**IMPORTANT**: Run the Bunny.net database migration before uploading videos:
 
 ```bash
 cd backend
-# Using MySQL CLI
-mysql -u username -p database_name < migrations/2025-11-03-add_bunny_videos_support.sql
+npm run migrate:bunny
+```
 
-# Or using the run-migration script
-node run-migration.js migrations/2025-11-03-add_bunny_videos_support.sql
+This will add the required columns (`lesson_slug`, `path`, `course_id`, `is_locked`) to your videos table.
+
+**Alternative method** (if npm script doesn't work):
+```bash
+cd backend
+node run-bunny-migration.js
 ```
 
 ### Running the Application
