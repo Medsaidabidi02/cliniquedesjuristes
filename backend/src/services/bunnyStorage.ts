@@ -61,23 +61,27 @@ class BunnyStorageService {
     const client = await this.createClient();
     
     try {
+      // Sanitize paths to prevent path injection
+      const sanitizedLocalPath = path.normalize(localFilePath).replace(/^(\.\.(\/|\\|$))+/, '');
+      const sanitizedRemotePath = path.posix.normalize(remoteFilePath).replace(/^(\.\.(\/|$))+/, '');
+      
       // Ensure the file exists
-      if (!fs.existsSync(localFilePath)) {
-        throw new Error(`Local file not found: ${localFilePath}`);
+      if (!fs.existsSync(sanitizedLocalPath)) {
+        throw new Error(`Local file not found: ${sanitizedLocalPath}`);
       }
 
       // Ensure remote directory exists
-      const remoteDir = path.dirname(remoteFilePath);
+      const remoteDir = path.posix.dirname(sanitizedRemotePath);
       await this.ensureDirectory(client, remoteDir);
 
       // Upload the file
-      console.log(`📤 Uploading ${localFilePath} to Bunny.net at ${remoteFilePath}`);
-      await client.uploadFrom(localFilePath, remoteFilePath);
+      console.log(`📤 Uploading file to Bunny.net at ${sanitizedRemotePath}`);
+      await client.uploadFrom(sanitizedLocalPath, sanitizedRemotePath);
       
-      console.log(`✅ File uploaded successfully to ${remoteFilePath}`);
+      console.log(`✅ File uploaded successfully to ${sanitizedRemotePath}`);
       
       // Generate the CDN URL
-      const cdnUrl = this.getCdnUrl(remoteFilePath);
+      const cdnUrl = this.getCdnUrl(sanitizedRemotePath);
       return cdnUrl;
       
     } catch (error) {

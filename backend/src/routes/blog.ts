@@ -239,9 +239,10 @@ router.post('/upload-image', authenticateToken, upload.single('image'), async (r
       return res.status(400).json({ success: false, error: 'No image file provided' });
     }
     
-    // Upload to Bunny.net
-    const remotePath = `/blog/${req.file.filename}`;
-    const localPath = path.join(__dirname, '../../uploads/blog', req.file.filename);
+    // Sanitize filename to prevent path traversal
+    const sanitizedFilename = path.basename(req.file.filename);
+    const remotePath = `/blog/${sanitizedFilename}`;
+    const localPath = path.join(__dirname, '../../uploads/blog', sanitizedFilename);
     
     try {
       const cdnUrl = await bunnyStorage.uploadFile(localPath, remotePath);
@@ -256,7 +257,7 @@ router.post('/upload-image', authenticateToken, upload.single('image'), async (r
     } catch (bunnyError) {
       console.error('❌ Failed to upload to Bunny.net, using local fallback:', bunnyError);
       const baseUrl = process.env.BASE_URL || process.env.API_URL || 'http://localhost:5001';
-      const imageUrl = `${baseUrl}/uploads/blog/${req.file.filename}`;
+      const imageUrl = `${baseUrl}/uploads/blog/${sanitizedFilename}`;
       res.json({ success: true, imageUrl, data: { imageUrl } });
     }
   } catch (error) {

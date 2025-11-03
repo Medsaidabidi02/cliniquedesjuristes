@@ -76,9 +76,10 @@ export const upload = multer({
 });
 // Helper functions
 export const uploadImage = async (file: Express.Multer.File): Promise<string> => {
-  // Upload to Bunny.net instead of using local URL
-  const remotePath = `/images/${file.filename}`;
-  const localPath = path.join(__dirname, '../../uploads/images', file.filename);
+  // Sanitize filename to prevent path traversal
+  const sanitizedFilename = path.basename(file.filename);
+  const remotePath = `/images/${sanitizedFilename}`;
+  const localPath = path.join(__dirname, '../../uploads/images', sanitizedFilename);
   
   try {
     const cdnUrl = await bunnyStorage.uploadFile(localPath, remotePath);
@@ -93,15 +94,16 @@ export const uploadImage = async (file: Express.Multer.File): Promise<string> =>
     console.error('❌ Failed to upload image to Bunny.net:', error);
     // Fallback to local URL if Bunny.net upload fails
     const baseUrl = process.env.BASE_URL || process.env.API_URL || 'http://localhost:5001';
-    return `${baseUrl}/uploads/images/${file.filename}`;
+    return `${baseUrl}/uploads/images/${sanitizedFilename}`;
   }
 };
 
 export const uploadVideo = async (file: Express.Multer.File, videoKey: string, courseId?: number): Promise<string> => {
-  // Upload to Bunny.net with course organization
+  // Sanitize filename to prevent path traversal
+  const sanitizedFilename = path.basename(file.filename);
   const courseFolder = courseId ? `course-${courseId}` : 'general';
-  const remotePath = `/videos/${courseFolder}/${file.filename}`;
-  const localPath = path.join(__dirname, '../../uploads/videos', file.filename);
+  const remotePath = `/videos/${courseFolder}/${sanitizedFilename}`;
+  const localPath = path.join(__dirname, '../../uploads/videos', sanitizedFilename);
   
   try {
     const cdnUrl = await bunnyStorage.uploadFile(localPath, remotePath);
@@ -116,15 +118,16 @@ export const uploadVideo = async (file: Express.Multer.File, videoKey: string, c
   } catch (error) {
     console.error('❌ Failed to upload video to Bunny.net:', error);
     // Fallback to local path if Bunny.net upload fails
-    return `uploads/videos/${file.filename}`;
+    return `uploads/videos/${sanitizedFilename}`;
   }
 };
 
 export const uploadThumbnail = async (file: Express.Multer.File, courseId?: number): Promise<string> => {
-  // Upload thumbnail to Bunny.net with course organization
+  // Sanitize filename to prevent path traversal
+  const sanitizedFilename = path.basename(file.filename);
   const courseFolder = courseId ? `course-${courseId}` : 'general';
-  const remotePath = `/thumbnails/${courseFolder}/${file.filename}`;
-  const localPath = path.join(__dirname, '../../uploads/thumbnails', file.filename);
+  const remotePath = `/thumbnails/${courseFolder}/${sanitizedFilename}`;
+  const localPath = path.join(__dirname, '../../uploads/thumbnails', sanitizedFilename);
   
   try {
     const cdnUrl = await bunnyStorage.uploadFile(localPath, remotePath);
@@ -139,7 +142,7 @@ export const uploadThumbnail = async (file: Express.Multer.File, courseId?: numb
   } catch (error) {
     console.error('❌ Failed to upload thumbnail to Bunny.net:', error);
     // Fallback to local path if Bunny.net upload fails
-    return `uploads/thumbnails/${file.filename}`;
+    return `uploads/thumbnails/${sanitizedFilename}`;
   }
 };
 
