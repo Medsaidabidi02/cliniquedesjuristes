@@ -160,9 +160,22 @@ const VideoManagement: React.FC = () => {
       console.log(`🔐 Fetching signed URL for video ${videoId}...`);
       const response = await api.get(`/api/videos/${videoId}/signed-url`);
       
-      if (response.data.success && response.data.videoUrl) {
-        setVideoUrl(response.data.videoUrl);
-        console.log('✅ Signed URL fetched successfully');
+      console.log('📊 Signed URL response:', response);
+      
+      // The api client already extracts data, so response is the actual data
+      if (response && typeof response === 'object') {
+        // Check if it has the expected structure
+        if ('success' in response && response.success && 'videoUrl' in response) {
+          setVideoUrl(response.videoUrl);
+          console.log('✅ Signed URL fetched successfully');
+        } else if ('videoUrl' in response) {
+          // Response might be already extracted
+          setVideoUrl(response.videoUrl);
+          console.log('✅ Signed URL fetched successfully (extracted)');
+        } else {
+          console.error('❌ Unexpected response structure:', response);
+          throw new Error('Invalid response from signed URL endpoint');
+        }
       } else {
         throw new Error('Invalid response from signed URL endpoint');
       }
@@ -172,7 +185,7 @@ const VideoManagement: React.FC = () => {
       setVideoUrlError(errorMsg);
       
       // Show helpful hint
-      if (errorMsg.includes('BUNNY')) {
+      if (errorMsg.includes('BUNNY') || errorMsg.includes('environment variable')) {
         setVideoUrlError(errorMsg + '. Please configure Bunny.net environment variables.');
       }
     } finally {
