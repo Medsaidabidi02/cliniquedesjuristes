@@ -28,19 +28,31 @@ export const s3Client = new S3Client({
 
 // Validate Wasabi configuration
 export const validateWasabiConfig = (): boolean => {
-  const isValid = !!(
-    wasabiConfig.accessKeyId &&
-    wasabiConfig.secretAccessKey &&
-    bucketName &&
-    wasabiConfig.region
-  );
+  // Check if credentials exist and are not placeholder values
+  const hasAccessKey = wasabiConfig.accessKeyId && 
+                       wasabiConfig.accessKeyId.length > 0 && 
+                       !wasabiConfig.accessKeyId.includes('${') &&
+                       !wasabiConfig.accessKeyId.includes('}');
+  
+  const hasSecretKey = wasabiConfig.secretAccessKey && 
+                       wasabiConfig.secretAccessKey.length > 0 && 
+                       !wasabiConfig.secretAccessKey.includes('${') &&
+                       !wasabiConfig.secretAccessKey.includes('}');
+  
+  const hasBucketName = bucketName && bucketName.length > 0;
+  const hasRegion = wasabiConfig.region && wasabiConfig.region.length > 0;
+  
+  const isValid = !!(hasAccessKey && hasSecretKey && hasBucketName && hasRegion);
 
   if (!isValid) {
-    console.error('❌ Wasabi configuration is incomplete. Please check environment variables:');
-    console.error('  - WASABI_ACCESS_KEY:', wasabiConfig.accessKeyId ? '✓' : '✗');
-    console.error('  - WASABI_SECRET_KEY:', wasabiConfig.secretAccessKey ? '✓' : '✗');
-    console.error('  - WASABI_BUCKET_NAME:', bucketName ? '✓' : '✗');
-    console.error('  - WASABI_REGION:', wasabiConfig.region ? '✓' : '✗');
+    console.warn('⚠️ Wasabi configuration is incomplete or using placeholders. Falling back to local storage.');
+    console.warn('  To enable Wasabi S3, set these environment variables with actual values:');
+    console.warn('  - WASABI_ACCESS_KEY:', hasAccessKey ? '✓' : '✗ (missing or placeholder)');
+    console.warn('  - WASABI_SECRET_KEY:', hasSecretKey ? '✓' : '✗ (missing or placeholder)');
+    console.warn('  - WASABI_BUCKET_NAME:', hasBucketName ? '✓' : '✗');
+    console.warn('  - WASABI_REGION:', hasRegion ? '✓' : '✗');
+  } else {
+    console.log('✅ Wasabi S3 configuration validated successfully');
   }
 
   return isValid;
@@ -140,7 +152,23 @@ export const uploadToWasabi = async (options: UploadOptions): Promise<{ key: str
     };
   } catch (error) {
     console.error('❌ Error uploading to Wasabi:', error);
-    throw new Error(`Failed to upload to Wasabi: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    
+    // Provide more specific error messages
+    let errorMessage = 'Unknown error';
+    if (error instanceof Error) {
+      errorMessage = error.message;
+      
+      // Detect common issues
+      if (errorMessage.includes('does not exist')) {
+        errorMessage = `Bucket '${bucketName}' does not exist. Please create the bucket in Wasabi console or check WASABI_BUCKET_NAME environment variable.`;
+      } else if (errorMessage.includes('InvalidAccessKeyId') || errorMessage.includes('SignatureDoesNotMatch')) {
+        errorMessage = 'Invalid Wasabi credentials. Please check WASABI_ACCESS_KEY and WASABI_SECRET_KEY environment variables.';
+      } else if (errorMessage.includes('Access Denied')) {
+        errorMessage = `Access denied to bucket '${bucketName}'. Please check bucket permissions and credentials.`;
+      }
+    }
+    
+    throw new Error(`Failed to upload to Wasabi: ${errorMessage}`);
   }
 };
 
@@ -285,9 +313,9 @@ export const getFolderFromFileType = (mimetype: string): string => {
   }
 };
 
-console.log('🌐 Wasabi S3 client initialized');
+// Only log initialization info, don't validate again (validation happens in fileUpload.ts)
+console.log('🌐 Wasabi S3 client module loaded');
 console.log(`  - Region: ${wasabiConfig.region}`);
 console.log(`  - Endpoint: ${wasabiConfig.endpoint}`);
 console.log(`  - Bucket: ${bucketName}`);
 console.log(`  - CDN Domain: ${cdnDomain}`);
-console.log(`  - Config Valid: ${validateWasabiConfig() ? '✓' : '✗'}`);
