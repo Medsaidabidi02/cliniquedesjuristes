@@ -1,11 +1,11 @@
 import { Router } from 'express';
-import { upload } from '../services/fileUpload';
+import { upload, isUsingWasabi, uploadVideo, uploadThumbnail } from '../services/fileUpload';
 import { videoStreamRateLimiter, adminRateLimiter } from '../middleware/rateLimiter';
 
 import path from 'path';
 import fs from 'fs';
 import database from '../config/database';
-import { getCdnUrl } from '../services/wasabiClient';
+import { getCdnUrl, deleteFromWasabi } from '../services/wasabiClient';
 
 const router = Router();
 
@@ -20,8 +20,6 @@ const simpleAuth = (req: any, res: any, next: any) => {
 
 // Helper to transform video paths to CDN URLs
 const transformVideoUrl = (videoPath: string): string => {
-  const { isUsingWasabi } = require('../services/fileUpload');
-  
   if (isUsingWasabi && videoPath) {
     // For Wasabi, return CDN URL
     return getCdnUrl(videoPath);
@@ -40,8 +38,6 @@ const transformVideoUrl = (videoPath: string): string => {
 // Helper to transform thumbnail paths to CDN URLs
 const transformThumbnailUrl = (thumbnailPath: string | null): string | null => {
   if (!thumbnailPath) return null;
-  
-  const { isUsingWasabi } = require('../services/fileUpload');
   
   if (isUsingWasabi) {
     // For Wasabi, return CDN URL
@@ -250,9 +246,6 @@ router.post('/', simpleAuth, upload.fields([
     let thumbnailPath: string | null = null;
 
     try {
-      // Import upload functions
-      const { uploadVideo, uploadThumbnail, isUsingWasabi } = require('../services/fileUpload');
-      
       // Upload video
       videoPath = await uploadVideo(videoFile);
       console.log(`✅ Video uploaded: ${videoPath} (using ${isUsingWasabi ? 'Wasabi S3' : 'local storage'})`);
@@ -469,13 +462,10 @@ router.delete('/:id', simpleAuth, adminRateLimiter, async (req, res) => {
     
     // Try to delete physical files from Wasabi or local storage
     try {
-      const { isUsingWasabi } = require('../services/fileUpload');
       const videoPath = video.video_path || video.file_path;
       
       if (isUsingWasabi) {
         // Delete from Wasabi S3
-        const { deleteFromWasabi } = require('../services/wasabiClient');
-        
         if (videoPath) {
           await deleteFromWasabi(videoPath);
           console.log(`🗑️ Deleted video from Wasabi: ${videoPath}`);

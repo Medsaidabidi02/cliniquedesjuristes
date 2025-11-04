@@ -83,8 +83,15 @@ export const uploadToWasabi = async (options: UploadOptions): Promise<{ key: str
     let originalName: string;
 
     // Type guard for Multer file
-    const isMulterFile = (f: any): f is Express.Multer.File => {
-      return f && typeof f === 'object' && 'buffer' in f && 'mimetype' in f && 'originalname' in f;
+    const isMulterFile = (f: unknown): f is Express.Multer.File => {
+      return (
+        typeof f === 'object' && 
+        f !== null && 
+        'buffer' in f && 
+        'mimetype' in f && 
+        'originalname' in f &&
+        Buffer.isBuffer((f as Express.Multer.File).buffer)
+      );
     };
 
     if (Buffer.isBuffer(file)) {
