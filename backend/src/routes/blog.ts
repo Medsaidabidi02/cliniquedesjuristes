@@ -5,11 +5,14 @@ import fs from 'fs';
 import jwt from 'jsonwebtoken';
 import database from '../config/database';
 import { upload } from '../services/fileUpload';
+import { uploadToWasabi, deleteFromWasabi, generateWasabiPath } from '../services/wasabiStorage';
+import crypto from 'crypto';
 
 const router = express.Router();
 const JWT_SECRET = process.env.JWT_SECRET || 'legal-education-platform-super-secret-key-medsaidabidi02-2025-mysql5-version';
 
 console.log('📝 FIXED Blog API loaded for Medsaidabidi02 - 2025-09-09 15:15:29');
+console.log('🗄️ Wasabi Cloud Storage integration enabled for blog images');
 
 // Helper function to generate slug
 const generateSlug = (title: string): string => {
@@ -229,18 +232,25 @@ router.get('/admin/stats', authenticateToken, requireAdmin, async (req, res) => 
   }
 });
 
-// POST /api/blog/upload-image - Upload image for blog content
+// POST /api/blog/upload-image - Upload image for blog content to Wasabi
 router.post('/upload-image', authenticateToken, upload.single('image'), async (req, res) => {
   try {
-    console.log('📤 POST /api/blog/upload-image - Uploading image at 2025-09-09 15:15:29');
+    console.log('📤 POST /api/blog/upload-image - Uploading image to Wasabi');
     
     if (!req.file) {
       return res.status(400).json({ success: false, error: 'No image file provided' });
     }
     
-    const baseUrl = process.env.BASE_URL || process.env.API_URL || 'http://localhost:5001';
-    const imageUrl = `${baseUrl}/uploads/blog/${req.file.filename}`;
-    console.log(`✅ Blog image uploaded successfully: ${imageUrl}`);
+    // Generate unique filename
+    const imageExtension = path.extname(req.file.originalname);
+    const imageFileName = `${crypto.randomUUID()}-${Date.now()}${imageExtension}`;
+    
+    // Upload to Wasabi
+    console.log('☁️ Uploading blog image to Wasabi...');
+    const imageWasabiPath = generateWasabiPath('blog', 'content', imageFileName);
+    const imageUrl = await uploadToWasabi(req.file, imageWasabiPath, req.file.mimetype);
+    
+    console.log(`✅ Blog image uploaded successfully to Wasabi: ${imageUrl}`);
     res.json({ success: true, imageUrl, data: { imageUrl } });
   } catch (error) {
     console.error('❌ Error uploading blog image:', error);
@@ -312,12 +322,18 @@ router.post('/', authenticateToken, upload.single('cover_image'), async (req, re
       slug = `${baseSlug}-${counter++}`;
     }
 
-    // Handle cover image
+    // Handle cover image - upload to Wasabi
     let cover_image = null;
     if (req.file) {
-      const baseUrl = process.env.BASE_URL || process.env.API_URL || 'http://localhost:5001';
-      cover_image = `${baseUrl}/uploads/blog/${req.file.filename}`;
-      console.log(`📸 Blog cover image uploaded for Medsaidabidi02: ${cover_image}`);
+      // Generate unique filename
+      const imageExtension = path.extname(req.file.originalname);
+      const imageFileName = `${crypto.randomUUID()}-${Date.now()}${imageExtension}`;
+      
+      // Upload to Wasabi
+      console.log('☁️ Uploading blog cover image to Wasabi...');
+      const imageWasabiPath = generateWasabiPath('blog', 'covers', imageFileName);
+      cover_image = await uploadToWasabi(req.file, imageWasabiPath, req.file.mimetype);
+      console.log(`📸 Blog cover image uploaded to Wasabi: ${cover_image}`);
     }
 
     const result = await database.query(`
@@ -406,25 +422,39 @@ router.put('/:id', authenticateToken, upload.single('cover_image'), async (req, 
       params.push(published);
     }
 
-    // Handle cover image
+    // Handle cover image - upload to Wasabi
     if (req.file) {
-      const baseUrl = process.env.BASE_URL || process.env.API_URL || 'http://localhost:5001';
-      const newCoverImage = `${baseUrl}/uploads/blog/${req.file.filename}`;
+      // Generate unique filename
+      const imageExtension = path.extname(req.file.originalname);
+      const imageFileName = `${crypto.randomUUID()}-${Date.now()}${imageExtension}`;
+      
+      // Upload to Wasabi
+      console.log('☁️ Uploading new blog cover image to Wasabi...');
+      const imageWasabiPath = generateWasabiPath('blog', 'covers', imageFileName);
+      const newCoverImage = await uploadToWasabi(req.file, imageWasabiPath, req.file.mimetype);
       updateFields.push('cover_image = ?');
       params.push(newCoverImage);
 
-      // Delete old image file if present
+      // Delete old image from Wasabi if present
       if (post.cover_image) {
-        const oldImagePath = path.join(__dirname, '..', '..', 'uploads', 'blog', path.basename(post.cover_image));
-        if (fs.existsSync(oldImagePath)) {
-          try { 
-            fs.unlinkSync(oldImagePath);
-            console.log(`🗑️ Deleted old blog image for Medsaidabidi02: ${oldImagePath}`);
-          } catch (e) { 
-            console.warn('Could not delete old image for Medsaidabidi02:', e); 
+        if (post.cover_image.startsWith('http')) {
+          // It's a Wasabi URL
+          console.log('☁️ Deleting old blog cover image from Wasabi...');
+          await deleteFromWasabi(post.cover_image);
+        } else {
+          // Legacy local file
+          const oldImagePath = path.join(__dirname, '..', '..', 'uploads', 'blog', path.basename(post.cover_image));
+          if (fs.existsSync(oldImagePath)) {
+            try { 
+              fs.unlinkSync(oldImagePath);
+              console.log(`🗑️ Deleted old blog image for Medsaidabidi02: ${oldImagePath}`);
+            } catch (e) { 
+              console.warn('Could not delete old image for Medsaidabidi02:', e); 
+            }
           }
         }
       }
+      console.log(`📸 New blog cover image uploaded to Wasabi: ${newCoverImage}`);
     }
 
     if (updateFields.length === 0) {
@@ -476,15 +506,22 @@ router.delete('/:id', authenticateToken, async (req, res) => {
 
     await database.query('DELETE FROM blog_posts WHERE id = ?', [id]);
 
-    // Delete associated image
+    // Delete associated image from Wasabi or local storage
     if (post.cover_image) {
-      const imagePath = path.join(__dirname, '..', '..', 'uploads', 'blog', path.basename(post.cover_image));
-      if (fs.existsSync(imagePath)) {
-        try { 
-          fs.unlinkSync(imagePath);
-          console.log(`🗑️ Deleted blog image: ${imagePath}`);
-        } catch (e) { 
-          console.warn('Could not delete blog image:', e); 
+      if (post.cover_image.startsWith('http')) {
+        // It's a Wasabi URL
+        console.log('☁️ Deleting blog cover image from Wasabi...');
+        await deleteFromWasabi(post.cover_image);
+      } else {
+        // Legacy local file
+        const imagePath = path.join(__dirname, '..', '..', 'uploads', 'blog', path.basename(post.cover_image));
+        if (fs.existsSync(imagePath)) {
+          try { 
+            fs.unlinkSync(imagePath);
+            console.log(`🗑️ Deleted blog image: ${imagePath}`);
+          } catch (e) { 
+            console.warn('Could not delete blog image:', e); 
+          }
         }
       }
     }

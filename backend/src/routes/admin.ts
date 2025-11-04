@@ -1,13 +1,17 @@
 import express from 'express';
 import { AuthRequest, requireAdmin } from '../middleware/auth';
-import { upload, uploadVideo, uploadImage } from '../services/fileUpload';
+import { upload } from '../services/fileUpload';
+import { uploadToWasabi, deleteFromWasabi, generateWasabiPath } from '../services/wasabiStorage';
 import { generateVideoKey } from '../services/videoSecurity';
 import bcrypt from 'bcrypt';
 import database from '../config/database';
+import crypto from 'crypto';
+import path from 'path';
 
 const router = express.Router();
 
 console.log('👑 FIXED Admin API loaded for Medsaidabidi02 - 2025-09-09 15:18:39');
+console.log('🗄️ Wasabi Cloud Storage integration enabled for admin uploads');
 
 // Apply admin check to all routes
 router.use(requireAdmin);
@@ -44,8 +48,15 @@ router.post('/courses', upload.single('cover_image'), async (req: AuthRequest, r
 
     let coverImageUrl = null;
     if (req.file) {
-      coverImageUrl = await uploadImage(req.file);
-      console.log('🖼️ Cover image uploaded for Medsaidabidi02:', coverImageUrl);
+      // Generate unique filename
+      const imageExtension = path.extname(req.file.originalname);
+      const imageFileName = `${crypto.randomUUID()}-${Date.now()}${imageExtension}`;
+      
+      // Upload to Wasabi - use 'thumbnails' for course covers
+      console.log('☁️ Uploading course cover image to Wasabi...');
+      const imageWasabiPath = generateWasabiPath('thumbnails', 'courses', imageFileName);
+      coverImageUrl = await uploadToWasabi(req.file, imageWasabiPath, req.file.mimetype);
+      console.log('🖼️ Cover image uploaded to Wasabi:', coverImageUrl);
     }
 
     const result = await database.query(`

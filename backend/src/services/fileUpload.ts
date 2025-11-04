@@ -3,14 +3,14 @@ import path from 'path';
 import fs from 'fs';
 import crypto from 'crypto';
 
-// Create uploads directories if they don't exist
+// Create uploads directories if they don't exist (for backward compatibility)
 const uploadsDir = path.join(__dirname, '../../uploads');
 const imagesDir = path.join(uploadsDir, 'images');
 const videosDir = path.join(uploadsDir, 'videos');
-const blogDir = path.join(uploadsDir, 'blog');        // Add this
-const thumbnailsDir = path.join(uploadsDir, 'thumbnails');  // Add this
+const blogDir = path.join(uploadsDir, 'blog');
+const thumbnailsDir = path.join(uploadsDir, 'thumbnails');
 
-// Ensure directories exist
+// Ensure directories exist (for backward compatibility)
 [uploadsDir, imagesDir, videosDir, blogDir, thumbnailsDir].forEach(dir => {
   if (!fs.existsSync(dir)) {
     fs.mkdirSync(dir, { recursive: true });
@@ -18,17 +18,20 @@ const thumbnailsDir = path.join(uploadsDir, 'thumbnails');  // Add this
   }
 });
 
-// Configure multer for local storage
-export const storage = multer.diskStorage({
+// Configure multer for memory storage (files will be uploaded to Wasabi)
+export const storage = multer.memoryStorage();
+
+// Legacy disk storage (kept for backward compatibility if needed)
+export const diskStorage = multer.diskStorage({
   destination: (req, file, cb) => {
     if (file.fieldname === 'video') {
       cb(null, videosDir);
     } else if (file.fieldname === 'thumbnail') {
-      cb(null, thumbnailsDir);  // Use thumbnails directory
+      cb(null, thumbnailsDir);
     } else if (file.fieldname === 'cover_image') {
-      cb(null, blogDir);        // Use blog directory for blog images
+      cb(null, blogDir);
     } else if (file.fieldname === 'image') {
-      cb(null, imagesDir);      // Keep general images in images directory
+      cb(null, imagesDir);
     } else {
       cb(null, uploadsDir);
     }
@@ -39,7 +42,6 @@ export const storage = multer.diskStorage({
   }
 });
 
-// File filter for security
 // File filter for security
 export const fileFilter = (req: any, file: Express.Multer.File, cb: any) => {
   // Allowed image types
@@ -54,37 +56,50 @@ export const fileFilter = (req: any, file: Express.Multer.File, cb: any) => {
       cb(new Error('Invalid video format. Only MP4, AVI, MOV, WMV, WEBM allowed.'));
     }
   } else if (file.fieldname === 'thumbnail' || file.fieldname === 'cover_image' || file.fieldname === 'image') {
-    // ✅ FIXED: Added 'thumbnail' to allowed field names
     if (allowedImageTypes.includes(file.mimetype)) {
       cb(null, true);
     } else {
       cb(new Error('Invalid image format. Only JPG, PNG, WEBP allowed.'));
     }
   } else {
-    // ✅ IMPROVED: Show what field names are allowed in error
     cb(new Error(`Unknown file field '${file.fieldname}'. Allowed fields: video, thumbnail, cover_image, image`));
   }
 };
-// Upload configuration
+// Upload configuration - using memory storage for Wasabi
 export const upload = multer({
-  storage: storage,
+  storage: storage, // Memory storage for Wasabi uploads
   fileFilter: fileFilter,
   limits: {
-    fileSize: 5 * 1024 * 1024 * 1024, // 5GB for videos (changed from 500MB)
+    fileSize: 5 * 1024 * 1024 * 1024, // 5GB for videos
   }
 });
-// Helper functions
+
+// Legacy disk upload (kept for backward compatibility)
+export const diskUpload = multer({
+  storage: diskStorage,
+  fileFilter: fileFilter,
+  limits: {
+    fileSize: 5 * 1024 * 1024 * 1024, // 5GB for videos
+  }
+});
+// Helper functions - Updated to work with Wasabi
 export const uploadImage = async (file: Express.Multer.File): Promise<string> => {
+  // This function will be replaced by Wasabi upload in route handlers
   const baseUrl = process.env.BASE_URL || process.env.API_URL || 'http://localhost:5001';
   return `${baseUrl}/uploads/images/${file.filename}`;
 };
 
 export const uploadVideo = async (file: Express.Multer.File, videoKey: string): Promise<string> => {
-  // Return the local path for database storage
+  // This function will be replaced by Wasabi upload in route handlers
   return `uploads/videos/${file.filename}`;
 };
 
 export const getSecureVideoUrl = async (videoPath: string): Promise<string> => {
+  // If it's already a Wasabi URL, return as is
+  if (videoPath.startsWith('http')) {
+    return videoPath;
+  }
+  // Otherwise, return local URL for backward compatibility
   const baseUrl = process.env.BASE_URL || process.env.API_URL || 'http://localhost:5001';
   return `${baseUrl}/${videoPath}`;
 };

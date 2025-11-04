@@ -1,13 +1,15 @@
 import { Router } from 'express';
 import { upload } from '../services/fileUpload';
-
+import { uploadToWasabi, deleteFromWasabi, generateWasabiPath, getWasabiUrl } from '../services/wasabiStorage';
 import path from 'path';
 import fs from 'fs';
 import database from '../config/database';
+import crypto from 'crypto';
 
 const router = Router();
 
 console.log('🎬 FIXED Videos API loaded for Medsaidabidi02 - 2025-09-09 17:15:30');
+console.log('🗄️ Wasabi Cloud Storage integration enabled');
 
 // Simple auth bypass for development
 const simpleAuth = (req: any, res: any, next: any) => {
@@ -134,7 +136,7 @@ router.get('/:id', async (req, res) => {
   }
 });
 
-// ✅ ULTRA-FIXED: POST upload new video with bulletproof MySQL5 response handling
+// ✅ POST upload new video with Wasabi Cloud Storage
 router.post('/', simpleAuth, upload.fields([
   { name: 'video', maxCount: 1 },
   { name: 'thumbnail', maxCount: 1 }
@@ -143,7 +145,7 @@ router.post('/', simpleAuth, upload.fields([
     const { title, description, subject_id, is_active } = req.body;
     const files = req.files as { [fieldname: string]: Express.Multer.File[] };
     
-    console.log('📤 POST /api/videos - Upload for Medsaidabidi02 at 2025-09-09 17:15:30');
+    console.log('📤 POST /api/videos - Upload to Wasabi for Medsaidabidi02');
     console.log('📝 Data:', { 
       title, 
       subject_id, 
@@ -168,9 +170,9 @@ router.post('/', simpleAuth, upload.fields([
       });
     }
     
-    // Check if subject exists
+    // Check if subject exists and get course_id
     const subjectCheck = await database.query(
-      'SELECT id, title FROM subjects WHERE id = ?', 
+      'SELECT s.id, s.title, s.course_id, c.title as course_title FROM subjects s LEFT JOIN courses c ON s.course_id = c.id WHERE s.id = ?', 
       [subject_id]
     );
     
@@ -182,21 +184,46 @@ router.post('/', simpleAuth, upload.fields([
       });
     }
     
+    const subject = subjectCheck.rows[0];
+    const course_id = subject.course_id;
+    
     const videoFile = files.video[0];
     const thumbnailFile = files.thumbnail?.[0];
     
     console.log('📁 Files for Medsaidabidi02:', {
       video: {
-        filename: videoFile.filename,
+        originalname: videoFile.originalname,
         size: (videoFile.size / (1024 * 1024)).toFixed(2) + ' MB',
         mimetype: videoFile.mimetype
       },
       thumbnail: thumbnailFile ? {
-        filename: thumbnailFile.filename,
+        originalname: thumbnailFile.originalname,
         size: (thumbnailFile.size / 1024).toFixed(2) + ' KB',
         mimetype: thumbnailFile.mimetype
       } : 'none'
     });
+    
+    // Generate unique filenames
+    const videoExtension = path.extname(videoFile.originalname);
+    const videoFileName = `${crypto.randomUUID()}-${Date.now()}${videoExtension}`;
+    const thumbnailFileName = thumbnailFile 
+      ? `${crypto.randomUUID()}-${Date.now()}${path.extname(thumbnailFile.originalname)}`
+      : null;
+    
+    // Upload video to Wasabi
+    console.log('☁️ Uploading video to Wasabi...');
+    const videoWasabiPath = generateWasabiPath('videos', course_id, videoFileName);
+    const videoUrl = await uploadToWasabi(videoFile, videoWasabiPath, videoFile.mimetype);
+    console.log(`✅ Video uploaded to Wasabi: ${videoUrl}`);
+    
+    // Upload thumbnail to Wasabi if provided
+    let thumbnailUrl = null;
+    if (thumbnailFile && thumbnailFileName) {
+      console.log('☁️ Uploading thumbnail to Wasabi...');
+      const thumbnailWasabiPath = generateWasabiPath('thumbnails', course_id, thumbnailFileName);
+      thumbnailUrl = await uploadToWasabi(thumbnailFile, thumbnailWasabiPath, thumbnailFile.mimetype);
+      console.log(`✅ Thumbnail uploaded to Wasabi: ${thumbnailUrl}`);
+    }
     
     // Get next order_index for this subject
     const orderResult = await database.query(
@@ -207,160 +234,104 @@ router.post('/', simpleAuth, upload.fields([
     
     console.log('🔄 Inserting video into database...');
     
-    // ✅ ULTRA-FIXED: Use multiple approaches to ensure we get the video ID
-    let videoId = null;
-    let createdVideo = null;
+    // Insert video record into database with Wasabi URLs
+    const insertResult = await database.query(`
+      INSERT INTO videos (
+        title, description, subject_id, video_path, file_path, thumbnail_path, 
+        file_size, duration, order_index, is_active, mime_type
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `, [
+      title.trim(),
+      description?.trim() || '',
+      parseInt(subject_id),
+      videoUrl,           // Store full Wasabi URL in video_path
+      videoWasabiPath,    // Store Wasabi key in file_path for reference
+      thumbnailUrl,       // Store full Wasabi URL for thumbnail
+      videoFile.size,
+      0,                  // Duration will need to be calculated separately
+      orderIndex,
+      is_active !== 'false',
+      videoFile.mimetype
+    ]);
     
-    try {
-      // Approach 1: Try direct INSERT and get insertId
-      const insertResult = await database.query(`
-        INSERT INTO videos (
-          title, description, subject_id, video_path, file_path, thumbnail_path, 
-          file_size, duration, order_index, is_active, mime_type
-        )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `, [
-        title.trim(),
-        description?.trim() || '',
-        parseInt(subject_id),
-        videoFile.filename, // video_path
-        videoFile.filename, // file_path (same value for compatibility)
-        thumbnailFile?.filename || null,
-        videoFile.size,
-        0, // Duration will need to be calculated separately
-        orderIndex,
-        is_active !== 'false',
-        videoFile.mimetype
-      ]);
-      
-      console.log('✅ Insert result structure for Medsaidabidi02:', {
-        type: typeof insertResult,
-        keys: Object.keys(insertResult || {}),
-        insertResult: insertResult
-      });
-      
-      // Try multiple ways to extract the video ID
-      if (insertResult && typeof insertResult === 'object') {
-        // Method 1: Direct insertId property
-        if (insertResult.insertId) {
-          videoId = insertResult.insertId;
-          console.log('✅ Got video ID from insertResult.insertId:', videoId);
-        }
-        // Method 2: insertId in rows array
-        else if (insertResult.rows && insertResult.rows.length > 0 && insertResult.rows[0].insertId) {
-          videoId = insertResult.rows[0].insertId;
-          console.log('✅ Got video ID from insertResult.rows[0].insertId:', videoId);
-        }
-        // Method 3: Check if insertResult is the ID itself
-        else if (typeof insertResult === 'number') {
-          videoId = insertResult;
-          console.log('✅ Got video ID from direct result:', videoId);
-        }
-        // Method 4: Check affectedRows and get LAST_INSERT_ID
-        else if (insertResult.affectedRows && insertResult.affectedRows > 0) {
-          console.log('🔄 Affected rows > 0, trying LAST_INSERT_ID()...');
-          const lastIdResult = await database.query('SELECT LAST_INSERT_ID() as id');
-          console.log('✅ LAST_INSERT_ID result:', lastIdResult);
-          if (lastIdResult.rows && lastIdResult.rows[0] && lastIdResult.rows[0].id) {
-            videoId = lastIdResult.rows[0].id;
-            console.log('✅ Got video ID from LAST_INSERT_ID():', videoId);
-          }
-        }
-      }
-      
-      // Approach 2: If still no ID, try to find the most recent video with our exact data
-      if (!videoId) {
-        console.log('🔄 No video ID found, searching by video filename...');
-        const searchResult = await database.query(`
-          SELECT id FROM videos 
-          WHERE video_path = ? AND title = ? AND subject_id = ? 
-          ORDER BY created_at DESC 
-          LIMIT 1
-        `, [videoFile.filename, title.trim(), parseInt(subject_id)]);
-        
-        if (searchResult.rows && searchResult.rows.length > 0) {
-          videoId = searchResult.rows[0].id;
-          console.log('✅ Found video ID by searching:', videoId);
-        }
-      }
-      
-      // Approach 3: Last resort - get the most recent video
-      if (!videoId) {
-        console.log('🔄 Still no video ID, getting most recent video...');
-        const recentResult = await database.query('SELECT id FROM videos ORDER BY created_at DESC LIMIT 1');
-        if (recentResult.rows && recentResult.rows.length > 0) {
-          videoId = recentResult.rows[0].id;
-          console.log('⚠️ Using most recent video ID as fallback:', videoId);
-        }
-      }
-      
-      if (!videoId) {
-        throw new Error('Could not determine video ID after insert - all methods failed');
-      }
-      
-      // Now get the complete video data
-      console.log(`🔄 Fetching complete video data for ID: ${videoId}`);
-      const createdVideoResult = await database.query(`
-        SELECT 
-          v.*,
-          s.title as subject_title,
-          s.professor_name,
-          c.title as course_title,
-          c.id as course_id
-        FROM videos v
-        LEFT JOIN subjects s ON v.subject_id = s.id
-        LEFT JOIN courses c ON s.course_id = c.id
-        WHERE v.id = ?
-      `, [videoId]);
-      
-      if (!createdVideoResult.rows || createdVideoResult.rows.length === 0) {
-        throw new Error(`Video with ID ${videoId} was inserted but cannot be retrieved`);
-      }
-      
-      createdVideo = createdVideoResult.rows[0];
-      
-      console.log('✅ Video uploaded successfully for Medsaidabidi02:', {
-        id: createdVideo.id,
-        title: createdVideo.title,
-        video_path: createdVideo.video_path,
-        file_path: createdVideo.file_path,
-        subject_id: createdVideo.subject_id,
-        subject_title: createdVideo.subject_title
-      });
-      
-      // ✅ FIXED: Return comprehensive response structure
-      return res.status(201).json({
-        success: true,
-        message: 'Video uploaded successfully',
-        data: createdVideo,
-        // Also include video properties directly for backward compatibility
-        id: createdVideo.id,
-        title: createdVideo.title,
-        description: createdVideo.description,
-        video_path: createdVideo.video_path,
-        file_path: createdVideo.file_path,
-        thumbnail_path: createdVideo.thumbnail_path,
-        subject_id: createdVideo.subject_id,
-        file_size: createdVideo.file_size,
-        is_active: createdVideo.is_active,
-        created_at: createdVideo.created_at,
-        updated_at: createdVideo.updated_at,
-        // Include joined data
-        subject_title: createdVideo.subject_title,
-        course_title: createdVideo.course_title,
-        professor_name: createdVideo.professor_name,
-        course_id: createdVideo.course_id
-      });
-      
-    } catch (dbError) {
-      console.error('❌ Database operation failed for Medsaidabidi02:', dbError);
-      throw new Error(`Database operation failed: ${dbError.message}`);
+    // Get the video ID
+    let videoId = insertResult.insertId;
+    
+    if (!videoId) {
+      // Fallback: try LAST_INSERT_ID()
+      const lastIdResult = await database.query('SELECT LAST_INSERT_ID() as id');
+      videoId = lastIdResult.rows[0]?.id;
     }
+    
+    if (!videoId) {
+      // Last resort: search by video URL
+      const searchResult = await database.query(
+        'SELECT id FROM videos WHERE video_path = ? ORDER BY created_at DESC LIMIT 1',
+        [videoUrl]
+      );
+      videoId = searchResult.rows[0]?.id;
+    }
+    
+    if (!videoId) {
+      throw new Error('Could not determine video ID after insert');
+    }
+    
+    // Fetch the complete video data
+    console.log(`🔄 Fetching complete video data for ID: ${videoId}`);
+    const createdVideoResult = await database.query(`
+      SELECT 
+        v.*,
+        s.title as subject_title,
+        s.professor_name,
+        c.title as course_title,
+        c.id as course_id
+      FROM videos v
+      LEFT JOIN subjects s ON v.subject_id = s.id
+      LEFT JOIN courses c ON s.course_id = c.id
+      WHERE v.id = ?
+    `, [videoId]);
+    
+    if (!createdVideoResult.rows || createdVideoResult.rows.length === 0) {
+      throw new Error(`Video with ID ${videoId} was inserted but cannot be retrieved`);
+    }
+    
+    const createdVideo = createdVideoResult.rows[0];
+    
+    console.log('✅ Video uploaded to Wasabi successfully:', {
+      id: createdVideo.id,
+      title: createdVideo.title,
+      video_path: createdVideo.video_path,
+      thumbnail_path: createdVideo.thumbnail_path,
+      subject_id: createdVideo.subject_id,
+      subject_title: createdVideo.subject_title
+    });
+    
+    return res.status(201).json({
+      success: true,
+      message: 'Video uploaded to Wasabi successfully',
+      data: createdVideo,
+      // Include properties directly for backward compatibility
+      id: createdVideo.id,
+      title: createdVideo.title,
+      description: createdVideo.description,
+      video_path: createdVideo.video_path,
+      file_path: createdVideo.file_path,
+      thumbnail_path: createdVideo.thumbnail_path,
+      subject_id: createdVideo.subject_id,
+      file_size: createdVideo.file_size,
+      is_active: createdVideo.is_active,
+      created_at: createdVideo.created_at,
+      updated_at: createdVideo.updated_at,
+      subject_title: createdVideo.subject_title,
+      course_title: createdVideo.course_title,
+      professor_name: createdVideo.professor_name,
+      course_id: createdVideo.course_id
+    });
     
   } catch (error) {
     console.error('❌ Video upload error for Medsaidabidi02:', error);
     
-    // ✅ FIXED: Provide detailed error information
     const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
     const errorStack = error instanceof Error ? error.stack : '';
     
@@ -376,11 +347,11 @@ router.post('/', simpleAuth, upload.fields([
   }
 });
 
-// DELETE video
+// DELETE video - with Wasabi deletion support
 router.delete('/:id', simpleAuth, async (req, res) => {
   try {
     const { id } = req.params;
-    console.log(`🗑️ DELETE /api/videos/${id} for Medsaidabidi02 at 2025-09-09 17:15:30`);
+    console.log(`🗑️ DELETE /api/videos/${id} for Medsaidabidi02`);
     
     // Get video info before deletion
     const videoInfo = await database.query('SELECT * FROM videos WHERE id = ?', [id]);
@@ -393,27 +364,42 @@ router.delete('/:id', simpleAuth, async (req, res) => {
     
     // Delete video record from database
     await database.query('DELETE FROM videos WHERE id = ?', [id]);
+    console.log(`✅ Video ${id} deleted from database`);
     
-    // Try to delete physical files (don't fail if files don't exist)
+    // Delete from Wasabi if URLs are Wasabi URLs
     try {
       const videoPath = video.video_path || video.file_path;
       if (videoPath) {
-        const fullVideoPath = path.join('uploads/videos', videoPath);
-        if (fs.existsSync(fullVideoPath)) {
-          fs.unlinkSync(fullVideoPath);
-          console.log(`🗑️ Deleted video file: ${fullVideoPath}`);
+        if (videoPath.startsWith('http')) {
+          // It's a Wasabi URL
+          console.log('☁️ Deleting video from Wasabi...');
+          await deleteFromWasabi(videoPath);
+        } else {
+          // Legacy local file - try to delete locally
+          const fullVideoPath = path.join('uploads/videos', videoPath);
+          if (fs.existsSync(fullVideoPath)) {
+            fs.unlinkSync(fullVideoPath);
+            console.log(`🗑️ Deleted local video file: ${fullVideoPath}`);
+          }
         }
       }
       
       if (video.thumbnail_path) {
-        const thumbPath = path.join('uploads/thumbnails', video.thumbnail_path);
-        if (fs.existsSync(thumbPath)) {
-          fs.unlinkSync(thumbPath);
-          console.log(`🗑️ Deleted thumbnail file: ${thumbPath}`);
+        if (video.thumbnail_path.startsWith('http')) {
+          // It's a Wasabi URL
+          console.log('☁️ Deleting thumbnail from Wasabi...');
+          await deleteFromWasabi(video.thumbnail_path);
+        } else {
+          // Legacy local file - try to delete locally
+          const thumbPath = path.join('uploads/thumbnails', video.thumbnail_path);
+          if (fs.existsSync(thumbPath)) {
+            fs.unlinkSync(thumbPath);
+            console.log(`🗑️ Deleted local thumbnail file: ${thumbPath}`);
+          }
         }
       }
     } catch (fileError) {
-      console.log('⚠️ Could not delete physical files (they may not exist):', fileError.message);
+      console.log('⚠️ Could not delete physical files:', fileError instanceof Error ? fileError.message : 'Unknown error');
     }
     
     console.log(`✅ Video ${id} deleted successfully for Medsaidabidi02`);
@@ -428,17 +414,27 @@ router.delete('/:id', simpleAuth, async (req, res) => {
   }
 });
 
-// ✅ FIXED: Serve video files with streaming support
+// ✅ Serve video files - redirect to Wasabi or serve legacy local files
 router.get('/stream/:filename', (req, res) => {
   try {
     const { filename } = req.params;
-    const videoPath = path.join('uploads/videos', filename);
     
-    console.log(`🎬 Streaming video for Medsaidabidi02: ${filename} at 2025-09-09 17:15:30`);
+    console.log(`🎬 Streaming video for Medsaidabidi02: ${filename}`);
+    
+    // If filename is a full Wasabi URL, redirect to it
+    if (filename.startsWith('http')) {
+      console.log(`↪️ Redirecting to Wasabi URL: ${filename}`);
+      return res.redirect(filename);
+    }
+    
+    // Try to serve legacy local file
+    const videoPath = path.join('uploads/videos', filename);
     
     if (!fs.existsSync(videoPath)) {
       console.log(`❌ Video file not found: ${videoPath}`);
-      return res.status(404).json({ message: 'Video file not found' });
+      return res.status(404).json({ 
+        message: 'Video file not found. Videos are now served from Wasabi Cloud Storage.' 
+      });
     }
     
     const stat = fs.statSync(videoPath);
@@ -475,17 +471,27 @@ router.get('/stream/:filename', (req, res) => {
   }
 });
 
-// ✅ ADDED: Serve thumbnail files
+// ✅ Serve thumbnail files - redirect to Wasabi or serve legacy local files
 router.get('/thumbnail/:filename', (req, res) => {
   try {
     const { filename } = req.params;
-    const thumbnailPath = path.join('uploads/thumbnails', filename);
     
-    console.log(`🖼️ Serving thumbnail for Medsaidabidi02: ${filename} at 2025-09-09 17:15:30`);
+    console.log(`🖼️ Serving thumbnail for Medsaidabidi02: ${filename}`);
+    
+    // If filename is a full Wasabi URL, redirect to it
+    if (filename.startsWith('http')) {
+      console.log(`↪️ Redirecting to Wasabi URL: ${filename}`);
+      return res.redirect(filename);
+    }
+    
+    // Try to serve legacy local file
+    const thumbnailPath = path.join('uploads/thumbnails', filename);
     
     if (!fs.existsSync(thumbnailPath)) {
       console.log(`❌ Thumbnail file not found: ${thumbnailPath}`);
-      return res.status(404).json({ message: 'Thumbnail file not found' });
+      return res.status(404).json({ 
+        message: 'Thumbnail file not found. Thumbnails are now served from Wasabi Cloud Storage.' 
+      });
     }
     
     res.sendFile(path.resolve(thumbnailPath));
