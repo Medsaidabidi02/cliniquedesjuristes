@@ -663,11 +663,11 @@ router.post('/bunny/upload', uploadLimiter, simpleAuth, upload.fields([
   { name: 'thumbnail', maxCount: 1 }
 ]), async (req, res) => {
   try {
-    const { title, description, course_id, lesson_slug, is_locked } = req.body;
+    const { title, description, course_id, subject_id, lesson_slug, is_locked } = req.body;
     const files = req.files as { [fieldname: string]: Express.Multer.File[] };
 
     console.log('📤 POST /api/videos/bunny/upload - Uploading to Bunny.net');
-    console.log('📝 Data:', { title, course_id, lesson_slug, files: files ? Object.keys(files) : 'no files' });
+    console.log('📝 Data:', { title, course_id, subject_id, lesson_slug, files: files ? Object.keys(files) : 'no files' });
 
     // Validate required fields
     if (!title || !course_id || !lesson_slug) {
@@ -774,15 +774,16 @@ router.post('/bunny/upload', uploadLimiter, simpleAuth, upload.fields([
       // Note: We'll use file_path instead of filename for compatibility
       const insertResult = await database.query(`
         INSERT INTO videos (
-          title, description, course_id, lesson_slug, 
+          title, description, course_id, subject_id, lesson_slug, 
           file_path, path, thumbnail_path,
           file_size, duration, is_locked, is_active, mime_type
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `, [
         title.trim(),
         description?.trim() || '',
         parseInt(course_id),
+        subject_id ? parseInt(subject_id) : null,
         lesson_slug.trim(),
         videoFileName,
         bunnyVideoPath,

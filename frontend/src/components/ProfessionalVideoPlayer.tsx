@@ -309,12 +309,46 @@ const ProfessionalVideoPlayer: React.FC<ProfessionalVideoPlayerProps> = ({
     }
   }, [autoPlay]);
 
-  // Get video stream URL
-  const getVideoUrl = () => {
-    const baseUrl = process.env.REACT_APP_API_URL || 'http://localhost:5001';
-    const filename = video.video_path.split('/').pop();
-    return `${baseUrl}/api/videos/stream/${filename}`;
-  };
+  // State for signed URL
+  const [videoUrl, setVideoUrl] = useState<string>('');
+  const [isLoadingUrl, setIsLoadingUrl] = useState(true);
+
+  // Fetch signed URL from backend
+  useEffect(() => {
+    const fetchSignedUrl = async () => {
+      try {
+        setIsLoadingUrl(true);
+        console.log(`🔐 Fetching signed URL for video ${video.id}...`);
+        
+        const response = await fetch(`/api/videos/${video.id}/signed-url`, {
+          headers: {
+            'Authorization': `Bearer ${localStorage.getItem('authToken') || ''}`
+          }
+        });
+        
+        const data = await response.json();
+        
+        if (data.success || data.videoUrl) {
+          const signedUrl = data.videoUrl || data.url;
+          setVideoUrl(signedUrl);
+          console.log(`✅ Signed URL fetched successfully for video ${video.id}`);
+        } else {
+          console.error('❌ Failed to get signed URL:', data);
+          setError('Impossible de charger la vidéo depuis Bunny.net');
+        }
+      } catch (error) {
+        console.error('❌ Error fetching signed URL:', error);
+        setError('Erreur de connexion au serveur');
+      } finally {
+        setIsLoadingUrl(false);
+      }
+    };
+
+    fetchSignedUrl();
+  }, [video.id]);
+
+  // Helper for error message
+  const [error, setError] = useState<string>('');
 
   return (
     <div 
@@ -334,38 +368,55 @@ const ProfessionalVideoPlayer: React.FC<ProfessionalVideoPlayerProps> = ({
       }}
     >
       {/* Video Element */}
-      <video
-        ref={videoRef}
-        className="w-full h-full"
-        src={getVideoUrl()}
-        autoPlay={autoPlay}
-        playsInline
-        onLoadedMetadata={handleLoadedMetadata}
-        onTimeUpdate={handleTimeUpdate}
-        onPlay={handlePlay}
-        onPause={handlePause}
-        onEnded={handleEnded}
-        onWaiting={handleWaiting}
-        onCanPlay={handleCanPlay}
-        crossOrigin="anonymous"
-        controlsList="nodownload noremoteplayback"
-        disablePictureInPicture
-        disableRemotePlayback
-        onContextMenu={(e) => e.preventDefault()}
-      />
+      {videoUrl && !isLoadingUrl ? (
+        <video
+          ref={videoRef}
+          className="w-full h-full"
+          src={videoUrl}
+          autoPlay={autoPlay}
+          playsInline
+          onLoadedMetadata={handleLoadedMetadata}
+          onTimeUpdate={handleTimeUpdate}
+          onPlay={handlePlay}
+          onPause={handlePause}
+          onEnded={handleEnded}
+          onWaiting={handleWaiting}
+          onCanPlay={handleCanPlay}
+          crossOrigin="anonymous"
+          controlsList="nodownload noremoteplayback"
+          disablePictureInPicture
+          disableRemotePlayback
+          onContextMenu={(e) => e.preventDefault()}
+        />
+      ) : null}
 
       {/* Loading Spinner */}
-      {isBuffering && (
+      {(isBuffering || isLoadingUrl) && (
         <div className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-50">
           <div className="flex flex-col items-center">
             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-green-500"></div>
-            <p className="text-white text-sm mt-2">Chargement...</p>
+            <p className="text-white text-sm mt-2">
+              {isLoadingUrl ? 'Chargement de la vidéo...' : 'Chargement...'}
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* Error Message */}
+      {error && (
+        <div className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-90">
+          <div className="text-center text-white p-6">
+            <svg className="w-16 h-16 mx-auto mb-4 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <p className="text-lg font-semibold mb-2">Erreur de chargement</p>
+            <p className="text-sm text-gray-300">{error}</p>
           </div>
         </div>
       )}
 
       {/* Center Play Button */}
-      {!isPlaying && !isBuffering && (
+      {!isPlaying && !isBuffering && !isLoadingUrl && !error && videoUrl && (
         <div className="absolute inset-0 flex items-center justify-center">
           <button
             onClick={togglePlayPause}

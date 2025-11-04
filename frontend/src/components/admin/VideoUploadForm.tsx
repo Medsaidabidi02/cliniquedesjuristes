@@ -273,6 +273,7 @@ const VideoUploadForm: React.FC<VideoUploadFormProps> = ({ onSuccess, onCancel, 
       uploadFormData.append('title', formData.title);
       uploadFormData.append('description', formData.description);
       uploadFormData.append('course_id', selectedCourseData?.id.toString() || '');
+      uploadFormData.append('subject_id', formData.subject_id); // Link to subject for proper course association
       uploadFormData.append('lesson_slug', lessonSlug);
       uploadFormData.append('is_locked', 'false'); // Set to true if this should be premium content
       uploadFormData.append('video', videoFile!);
