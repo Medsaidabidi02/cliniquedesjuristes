@@ -76,11 +76,16 @@ export const uploadToWasabi = async (options: UploadOptions): Promise<{ key: str
 
     const { file, folder = 'videos', filename, contentType, isPublic = true } = options;
 
-    // Determine file properties
+    // Determine file properties with proper type checking
     let fileBuffer: Buffer;
     let fileSize: number;
     let mimeType: string;
     let originalName: string;
+
+    // Type guard for Multer file
+    const isMulterFile = (f: any): f is Express.Multer.File => {
+      return f && typeof f === 'object' && 'buffer' in f && 'mimetype' in f && 'originalname' in f;
+    };
 
     if (Buffer.isBuffer(file)) {
       fileBuffer = file;
@@ -89,12 +94,14 @@ export const uploadToWasabi = async (options: UploadOptions): Promise<{ key: str
       originalName = filename || 'file';
     } else if (file instanceof Readable) {
       throw new Error('Stream uploads should use uploadStreamToWasabi');
-    } else {
+    } else if (isMulterFile(file)) {
       // It's a Multer file
       fileBuffer = file.buffer;
       fileSize = file.size;
       mimeType = file.mimetype;
       originalName = file.originalname;
+    } else {
+      throw new Error('Invalid file type provided');
     }
 
     // Generate unique filename if not provided
@@ -235,14 +242,14 @@ export const fileExistsInWasabi = async (key: string): Promise<boolean> => {
 // Extract key from CDN URL
 export const extractKeyFromUrl = (url: string): string | null => {
   try {
-    // Handle both CDN URLs and direct S3 URLs
-    if (url.includes(cdnDomain)) {
+    const urlObj = new URL(url);
+    
+    // Handle CDN URLs - verify the hostname matches exactly
+    if (urlObj.hostname === cdnDomain) {
       // CDN URL: https://cdn.cliniquedesjuristes.com/videos/file.mp4
-      const urlObj = new URL(url);
       return urlObj.pathname.substring(1); // Remove leading slash
-    } else if (url.includes(bucketName)) {
-      // Direct S3 URL
-      const urlObj = new URL(url);
+    } else if (urlObj.hostname.includes('wasabisys.com') && url.includes(bucketName)) {
+      // Direct S3 URL from Wasabi
       const pathParts = urlObj.pathname.split('/');
       // Remove bucket name if present in path
       return pathParts.slice(2).join('/');

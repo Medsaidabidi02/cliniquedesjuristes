@@ -151,7 +151,7 @@ const ProfessionalVideoPlayer: React.FC<ProfessionalVideoPlayerProps> = ({
   };
 
   // Control handlers
-  const togglePlayPause = () => {
+  const togglePlayPause = useCallback(() => {
     if (videoRef.current) {
       if (!isAuthenticated && currentTime >= 10) {
         console.log('🔒 Login required to continue watching - Azizkh07');
@@ -164,7 +164,7 @@ const ProfessionalVideoPlayer: React.FC<ProfessionalVideoPlayerProps> = ({
         videoRef.current.play();
       }
     }
-  };
+  }, [isAuthenticated, currentTime, isPlaying]);
 
   const handleProgressMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
     setIsDragging(true);
@@ -195,7 +195,7 @@ const ProfessionalVideoPlayer: React.FC<ProfessionalVideoPlayerProps> = ({
     }
   };
 
-  const toggleMute = () => {
+  const toggleMute = useCallback(() => {
     if (videoRef.current) {
       const newMuted = !isMuted;
       videoRef.current.muted = newMuted;
@@ -207,7 +207,7 @@ const ProfessionalVideoPlayer: React.FC<ProfessionalVideoPlayerProps> = ({
         videoRef.current.volume = volume;
       }
     }
-  };
+  }, [isMuted, volume]);
 
   const changePlaybackRate = (rate: number) => {
     if (videoRef.current) {
@@ -285,7 +285,7 @@ const ProfessionalVideoPlayer: React.FC<ProfessionalVideoPlayerProps> = ({
         handleVolumeChange(Math.max(0, volume - 0.1));
         break;
     }
-  }, [currentTime, duration, volume, isAuthenticated, isFullscreen, onClose]);
+  }, [currentTime, duration, volume, isAuthenticated, isFullscreen, onClose, togglePlayPause, toggleMute]);
 
   useEffect(() => {
     document.addEventListener('keydown', handleKeyDown);

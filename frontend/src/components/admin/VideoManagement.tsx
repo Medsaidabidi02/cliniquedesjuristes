@@ -418,7 +418,7 @@ const VideoManagement: React.FC = () => {
               </button>
               
               {/* Duration Badge */}
-              {video.duration > 0 && (
+              {video.duration && video.duration > 0 && (
                 <div className="absolute bottom-2 right-2 bg-black bg-opacity-75 text-white text-xs px-2 py-1 rounded">
                   {formatDuration(video.duration)}
                 </div>
@@ -626,7 +626,7 @@ const VideoManagement: React.FC = () => {
                 <div className="space-y-3">
                   <h4 className="font-semibold text-gray-900 mb-3">📊 Détails techniques</h4>
                   <div className="space-y-2 text-sm">
-                    <div><span className="font-medium text-gray-700">Durée:</span> {formatDuration(selectedVideo.duration)}</div>
+                    <div><span className="font-medium text-gray-700">Durée:</span> {formatDuration(selectedVideo.duration || 0)}</div>
                     <div><span className="font-medium text-gray-700">Taille:</span> {formatFileSize(selectedVideo.file_size || 0)}</div>
                     <div><span className="font-medium text-gray-700">Fichier:</span> {selectedVideo.video_path}</div>
                   </div>

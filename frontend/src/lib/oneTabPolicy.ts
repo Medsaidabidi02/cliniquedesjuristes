@@ -259,7 +259,9 @@ function cleanup(): void {
   hideInactiveTabOverlay();
 }
 
-export default {
+const oneTabPolicy = {
   init: initOneTabPolicy,
   stop: stopOneTabPolicy
 };
+
+export default oneTabPolicy;

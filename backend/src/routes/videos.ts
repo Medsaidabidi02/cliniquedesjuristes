@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { upload } from '../services/fileUpload';
+import { videoStreamRateLimiter } from '../middleware/rateLimiter';
 
 import path from 'path';
 import fs from 'fs';
@@ -518,8 +519,8 @@ router.delete('/:id', simpleAuth, async (req, res) => {
   }
 });
 
-// ✅ FIXED: Serve video files with streaming support
-router.get('/stream/:filename', (req, res) => {
+// ✅ FIXED: Serve video files with streaming support (with rate limiting)
+router.get('/stream/:filename', videoStreamRateLimiter, (req, res) => {
   try {
     const { filename } = req.params;
     const videoPath = path.join('uploads/videos', filename);
@@ -565,8 +566,8 @@ router.get('/stream/:filename', (req, res) => {
   }
 });
 
-// ✅ ADDED: Serve thumbnail files
-router.get('/thumbnail/:filename', (req, res) => {
+// ✅ ADDED: Serve thumbnail files (with rate limiting)
+router.get('/thumbnail/:filename', videoStreamRateLimiter, (req, res) => {
   try {
     const { filename } = req.params;
     const thumbnailPath = path.join('uploads/thumbnails', filename);

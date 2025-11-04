@@ -125,8 +125,15 @@ class ApiClient {
     const isFormData = options.body instanceof FormData;
 
     // If not form data and Content-Type not explicitly provided, default to application/json
-    if (!isFormData && !('content-type' in Object.keys(suppliedHeaders).reduce((acc, k) => (acc[k.toLowerCase()] = suppliedHeaders[k], acc), {} as Record<string,string>))) {
-      headers['Content-Type'] = 'application/json';
+    if (!isFormData) {
+      const lowerCaseHeaders = Object.keys(suppliedHeaders).reduce((acc, k) => {
+        acc[k.toLowerCase()] = suppliedHeaders[k];
+        return acc;
+      }, {} as Record<string, string>);
+      
+      if (!('content-type' in lowerCaseHeaders)) {
+        headers['Content-Type'] = 'application/json';
+      }
     }
 
     // Merge supplied headers

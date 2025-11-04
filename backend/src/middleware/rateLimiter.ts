@@ -66,3 +66,24 @@ export const generalApiRateLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false
 });
+
+/**
+ * Rate limiter for video streaming endpoints
+ * Prevents abuse of video/file access while allowing normal playback
+ */
+export const videoStreamRateLimiter = rateLimit({
+  windowMs: 60 * 1000, // 1 minute
+  max: 100, // 100 requests per minute (allows for video seeking and multiple concurrent videos)
+  message: {
+    success: false,
+    message: 'Trop de requêtes de streaming vidéo. Veuillez ralentir.'
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+  // Use IP + video filename as key to allow multiple videos
+  keyGenerator: (req) => {
+    const ip = req.ip || req.socket.remoteAddress || 'unknown';
+    const filename = req.params.filename || 'unknown';
+    return `${ip}-${filename}`;
+  }
+});
