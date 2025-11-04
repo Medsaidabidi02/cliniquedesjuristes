@@ -115,6 +115,8 @@ export const uploadImage = async (file: Express.Multer.File): Promise<string> =>
 };
 
 export const uploadVideo = async (file: Express.Multer.File, videoKey?: string): Promise<string> => {
+  console.log(`🔍 uploadVideo called - useWasabi: ${useWasabi}, hasBuffer: ${!!file.buffer}, hasFilename: ${!!file.filename}`);
+  
   if (useWasabi && file.buffer) {
     // Upload to Wasabi S3 and return the CDN URL
     try {
@@ -135,11 +137,16 @@ export const uploadVideo = async (file: Express.Multer.File, videoKey?: string):
     }
   } else {
     // Return the local path for database storage
+    if (!file.filename) {
+      throw new Error('File upload failed: filename is undefined. This may indicate a multer configuration issue.');
+    }
     return `uploads/videos/${file.filename}`;
   }
 };
 
 export const uploadThumbnail = async (file: Express.Multer.File): Promise<string> => {
+  console.log(`🔍 uploadThumbnail called - useWasabi: ${useWasabi}, hasBuffer: ${!!file.buffer}, hasFilename: ${!!file.filename}`);
+  
   if (useWasabi && file.buffer) {
     // Upload to Wasabi S3
     try {
@@ -160,6 +167,9 @@ export const uploadThumbnail = async (file: Express.Multer.File): Promise<string
     }
   } else {
     // Return the local filename for database storage
+    if (!file.filename) {
+      throw new Error('Thumbnail upload failed: filename is undefined. This may indicate a multer configuration issue.');
+    }
     return file.filename;
   }
 };
