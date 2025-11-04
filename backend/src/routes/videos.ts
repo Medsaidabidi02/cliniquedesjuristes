@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { upload } from '../services/fileUpload';
-import { videoStreamRateLimiter } from '../middleware/rateLimiter';
+import { videoStreamRateLimiter, adminRateLimiter } from '../middleware/rateLimiter';
 
 import path from 'path';
 import fs from 'fs';
@@ -449,8 +449,8 @@ router.post('/', simpleAuth, upload.fields([
   }
 });
 
-// DELETE video
-router.delete('/:id', simpleAuth, async (req, res) => {
+// DELETE video (with rate limiting)
+router.delete('/:id', simpleAuth, adminRateLimiter, async (req, res) => {
   try {
     const { id } = req.params;
     console.log(`🗑️ DELETE /api/videos/${id} for Medsaidabidi02 at 2025-09-09 17:15:30`);

@@ -90,8 +90,9 @@ export const uploadToWasabi = async (options: UploadOptions): Promise<{ key: str
     if (Buffer.isBuffer(file)) {
       fileBuffer = file;
       fileSize = file.length;
-      mimeType = contentType || 'application/octet-stream';
-      originalName = filename || 'file';
+      // Ensure contentType is always a string
+      mimeType = (contentType && typeof contentType === 'string') ? contentType : 'application/octet-stream';
+      originalName = (filename && typeof filename === 'string') ? filename : 'file';
     } else if (file instanceof Readable) {
       throw new Error('Stream uploads should use uploadStreamToWasabi');
     } else if (isMulterFile(file)) {
@@ -248,11 +249,16 @@ export const extractKeyFromUrl = (url: string): string | null => {
     if (urlObj.hostname === cdnDomain) {
       // CDN URL: https://cdn.cliniquedesjuristes.com/videos/file.mp4
       return urlObj.pathname.substring(1); // Remove leading slash
-    } else if (urlObj.hostname.includes('wasabisys.com') && url.includes(bucketName)) {
-      // Direct S3 URL from Wasabi
+    } else if (urlObj.hostname.endsWith('.wasabisys.com') && urlObj.hostname.startsWith('s3.')) {
+      // Direct S3 URL from Wasabi - verify it's a proper Wasabi S3 URL
+      // Expected format: s3.{region}.wasabisys.com
       const pathParts = urlObj.pathname.split('/');
-      // Remove bucket name if present in path
-      return pathParts.slice(2).join('/');
+      // Check if bucket name is in path
+      if (pathParts.length > 2 && pathParts[1] === bucketName) {
+        return pathParts.slice(2).join('/');
+      }
+      // Otherwise, entire path is the key
+      return urlObj.pathname.substring(1);
     }
     return null;
   } catch (error) {
