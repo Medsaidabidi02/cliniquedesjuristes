@@ -1,5 +1,5 @@
 import React, { useRef, useState, useEffect } from 'react';
-import { Video } from '../lib/videoService';
+import { Video, videoService } from '../lib/videoService';
 
 interface VideoPreviewProps {
   video: Video;
@@ -24,17 +24,11 @@ const VideoPreview: React.FC<VideoPreviewProps> = ({
   console.log(`🎬 VideoPreview for ${video.title} - Azizkh07 at 2025-08-20 14:30:38`);
 
   const getVideoUrl = () => {
-    const baseUrl = process.env.REACT_APP_API_URL || 'http://localhost:5001';
-    const filename = video.video_path.split('/').pop();
-    return `${baseUrl}/api/videos/stream/${filename}`;
+    return videoService.getVideoStreamUrl(video);
   };
 
   const getThumbnailUrl = () => {
-    if (video.thumbnail_path) {
-      const baseUrl = process.env.REACT_APP_API_URL || 'http://localhost:5001';
-      return `${baseUrl}/api/videos/thumbnail/${video.thumbnail_path}`;
-    }
-    return '/api/placeholder/320/180';
+    return videoService.getThumbnailUrl(video);
   };
 
   const handleMouseEnter = () => {

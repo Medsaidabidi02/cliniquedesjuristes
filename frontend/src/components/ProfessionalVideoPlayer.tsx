@@ -1,5 +1,5 @@
 import React, { useRef, useState, useEffect, useCallback } from 'react';
-import { Video } from '../lib/videoService';
+import { Video, videoService } from '../lib/videoService';
 
 interface ProfessionalVideoPlayerProps {
   video: Video;
@@ -311,9 +311,7 @@ const ProfessionalVideoPlayer: React.FC<ProfessionalVideoPlayerProps> = ({
 
   // Get video stream URL
   const getVideoUrl = () => {
-    const baseUrl = process.env.REACT_APP_API_URL || 'http://localhost:5001';
-    const filename = video.video_path.split('/').pop();
-    return `${baseUrl}/api/videos/stream/${filename}`;
+    return videoService.getVideoStreamUrl(video);
   };
 
   return (

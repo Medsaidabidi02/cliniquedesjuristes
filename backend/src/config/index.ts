@@ -17,6 +17,14 @@ export const config = {
     // CHANGED: Increased from 500MB to 5GB (5 * 1024 * 1024 * 1024 bytes)
     maxFileSize: parseInt(process.env.MAX_FILE_SIZE || '5120') * 1024 * 1024, // 5120MB = 5GB
   },
+  wasabi: {
+    accessKey: process.env.WASABI_ACCESS_KEY || '',
+    secretKey: process.env.WASABI_SECRET_KEY || '',
+    bucketName: process.env.WASABI_BUCKET_NAME || 'my-educational-platform',
+    region: process.env.WASABI_REGION || 'eu-central-1',
+    endpoint: process.env.WASABI_ENDPOINT || 'https://s3.eu-central-1.wasabisys.com',
+    cdnDomain: process.env.CDN_DOMAIN || 'cdn.cliniquedesjuristes.com',
+  },
   admin: {
     defaultEmail: process.env.DEFAULT_ADMIN_EMAIL || 'admin@cliniquejuriste.com',
     defaultPassword: process.env.DEFAULT_ADMIN_PASSWORD || 'admin123',

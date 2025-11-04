@@ -4,6 +4,7 @@ import { upload } from '../services/fileUpload';
 import path from 'path';
 import fs from 'fs';
 import database from '../config/database';
+import { getCdnUrl } from '../services/wasabiClient';
 
 const router = Router();
 
@@ -14,6 +15,41 @@ const simpleAuth = (req: any, res: any, next: any) => {
   console.log('🔓 Using simple auth bypass for videos - Medsaidabidi02');
   req.user = { id: 1, name: 'Medsaidabidi02', email: 'admin@cliniquejuriste.com', is_admin: true };
   next();
+};
+
+// Helper to transform video paths to CDN URLs
+const transformVideoUrl = (videoPath: string): string => {
+  const { isUsingWasabi } = require('../services/fileUpload');
+  
+  if (isUsingWasabi && videoPath) {
+    // For Wasabi, return CDN URL
+    return getCdnUrl(videoPath);
+  } else {
+    // For local storage, return API URL
+    const baseUrl = process.env.BASE_URL || process.env.API_URL || 'http://localhost:5001';
+    // If path already includes 'uploads/', use it as is
+    if (videoPath.startsWith('uploads/')) {
+      return `${baseUrl}/${videoPath}`;
+    } else {
+      return `${baseUrl}/uploads/videos/${videoPath}`;
+    }
+  }
+};
+
+// Helper to transform thumbnail paths to CDN URLs
+const transformThumbnailUrl = (thumbnailPath: string | null): string | null => {
+  if (!thumbnailPath) return null;
+  
+  const { isUsingWasabi } = require('../services/fileUpload');
+  
+  if (isUsingWasabi) {
+    // For Wasabi, return CDN URL
+    return getCdnUrl(thumbnailPath);
+  } else {
+    // For local storage, return API URL
+    const baseUrl = process.env.BASE_URL || process.env.API_URL || 'http://localhost:5001';
+    return `${baseUrl}/api/videos/thumbnail/${thumbnailPath}`;
+  }
 };
 
 // GET all videos with subject/course info
@@ -37,11 +73,16 @@ router.get('/', async (req, res) => {
       ORDER BY v.created_at DESC
     `);
     
-    // Transform data to ensure video_path is available
-    const videos = result.rows.map(video => ({
-      ...video,
-      video_path: video.video_path || video.file_path // Fallback to file_path if video_path is null
-    }));
+    // Transform data to ensure video_path is available and add CDN URLs
+    const videos = result.rows.map(video => {
+      const videoPath = video.video_path || video.file_path;
+      return {
+        ...video,
+        video_path: videoPath,
+        video_url: videoPath ? transformVideoUrl(videoPath) : null,
+        thumbnail_url: transformThumbnailUrl(video.thumbnail_path)
+      };
+    });
     
     console.log(`✅ Found ${videos.length} videos for Medsaidabidi02`);
     res.json(videos);
@@ -122,7 +163,9 @@ router.get('/:id', async (req, res) => {
     
     const video = {
       ...result.rows[0],
-      video_path: result.rows[0].video_path || result.rows[0].file_path
+      video_path: result.rows[0].video_path || result.rows[0].file_path,
+      video_url: transformVideoUrl(result.rows[0].video_path || result.rows[0].file_path),
+      thumbnail_url: transformThumbnailUrl(result.rows[0].thumbnail_path)
     };
     
     console.log(`✅ Found video ${id} for Medsaidabidi02`);
@@ -187,16 +230,45 @@ router.post('/', simpleAuth, upload.fields([
     
     console.log('📁 Files for Medsaidabidi02:', {
       video: {
-        filename: videoFile.filename,
+        originalname: videoFile.originalname,
         size: (videoFile.size / (1024 * 1024)).toFixed(2) + ' MB',
-        mimetype: videoFile.mimetype
+        mimetype: videoFile.mimetype,
+        hasBuffer: !!videoFile.buffer
       },
       thumbnail: thumbnailFile ? {
-        filename: thumbnailFile.filename,
+        originalname: thumbnailFile.originalname,
         size: (thumbnailFile.size / 1024).toFixed(2) + ' KB',
-        mimetype: thumbnailFile.mimetype
+        mimetype: thumbnailFile.mimetype,
+        hasBuffer: !!thumbnailFile.buffer
       } : 'none'
     });
+
+    // Upload files to Wasabi or local storage
+    console.log('📤 Uploading files...');
+    let videoPath: string;
+    let thumbnailPath: string | null = null;
+
+    try {
+      // Import upload functions
+      const { uploadVideo, uploadThumbnail, isUsingWasabi } = require('../services/fileUpload');
+      
+      // Upload video
+      videoPath = await uploadVideo(videoFile);
+      console.log(`✅ Video uploaded: ${videoPath} (using ${isUsingWasabi ? 'Wasabi S3' : 'local storage'})`);
+      
+      // Upload thumbnail if provided
+      if (thumbnailFile) {
+        thumbnailPath = await uploadThumbnail(thumbnailFile);
+        console.log(`✅ Thumbnail uploaded: ${thumbnailPath}`);
+      }
+    } catch (uploadError) {
+      console.error('❌ Error uploading files:', uploadError);
+      return res.status(500).json({
+        success: false,
+        message: 'Failed to upload files',
+        error: uploadError instanceof Error ? uploadError.message : 'Unknown error'
+      });
+    }
     
     // Get next order_index for this subject
     const orderResult = await database.query(
@@ -223,9 +295,9 @@ router.post('/', simpleAuth, upload.fields([
         title.trim(),
         description?.trim() || '',
         parseInt(subject_id),
-        videoFile.filename, // video_path
-        videoFile.filename, // file_path (same value for compatibility)
-        thumbnailFile?.filename || null,
+        videoPath, // video_path - now contains S3 key or local path
+        videoPath, // file_path (same value for compatibility)
+        thumbnailPath,
         videoFile.size,
         0, // Duration will need to be calculated separately
         orderIndex,
@@ -394,22 +466,40 @@ router.delete('/:id', simpleAuth, async (req, res) => {
     // Delete video record from database
     await database.query('DELETE FROM videos WHERE id = ?', [id]);
     
-    // Try to delete physical files (don't fail if files don't exist)
+    // Try to delete physical files from Wasabi or local storage
     try {
+      const { isUsingWasabi } = require('../services/fileUpload');
       const videoPath = video.video_path || video.file_path;
-      if (videoPath) {
-        const fullVideoPath = path.join('uploads/videos', videoPath);
-        if (fs.existsSync(fullVideoPath)) {
-          fs.unlinkSync(fullVideoPath);
-          console.log(`🗑️ Deleted video file: ${fullVideoPath}`);
-        }
-      }
       
-      if (video.thumbnail_path) {
-        const thumbPath = path.join('uploads/thumbnails', video.thumbnail_path);
-        if (fs.existsSync(thumbPath)) {
-          fs.unlinkSync(thumbPath);
-          console.log(`🗑️ Deleted thumbnail file: ${thumbPath}`);
+      if (isUsingWasabi) {
+        // Delete from Wasabi S3
+        const { deleteFromWasabi } = require('../services/wasabiClient');
+        
+        if (videoPath) {
+          await deleteFromWasabi(videoPath);
+          console.log(`🗑️ Deleted video from Wasabi: ${videoPath}`);
+        }
+        
+        if (video.thumbnail_path) {
+          await deleteFromWasabi(video.thumbnail_path);
+          console.log(`🗑️ Deleted thumbnail from Wasabi: ${video.thumbnail_path}`);
+        }
+      } else {
+        // Delete from local storage
+        if (videoPath) {
+          const fullVideoPath = path.join('uploads/videos', videoPath);
+          if (fs.existsSync(fullVideoPath)) {
+            fs.unlinkSync(fullVideoPath);
+            console.log(`🗑️ Deleted video file: ${fullVideoPath}`);
+          }
+        }
+        
+        if (video.thumbnail_path) {
+          const thumbPath = path.join('uploads/thumbnails', video.thumbnail_path);
+          if (fs.existsSync(thumbPath)) {
+            fs.unlinkSync(thumbPath);
+            console.log(`🗑️ Deleted thumbnail file: ${thumbPath}`);
+          }
         }
       }
     } catch (fileError) {

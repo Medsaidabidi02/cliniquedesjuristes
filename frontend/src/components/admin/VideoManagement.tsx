@@ -1,25 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { api, getErrorMessage } from '../../lib/api';
 import VideoUploadForm from './VideoUploadForm';
-
-interface Video {
-  id: number;
-  title: string;
-  description: string;
-  video_path: string;
-  thumbnail_path: string;
-  duration: number;
-  subject_id: number;
-  file_size: number;
-  is_active: boolean;
-  created_at: string;
-  updated_at: string;
-  // From joins
-  subject_title?: string;
-  course_title?: string;
-  professor_name?: string;
-  course_id?: number;
-}
+import { videoService } from '../../lib/videoService';
+import type { Video } from '../../lib/videoService';
 
 interface Course {
   id: number;
@@ -597,19 +580,14 @@ const VideoManagement: React.FC = () => {
                   }}
                 >
                   <source 
-                    src={`/api/videos/stream/${selectedVideo.video_path}`} 
-                    type="video/mp4" 
-                  />
-                  {/* Fallback for older browsers */}
-                  <source 
-                    src={`/uploads/videos/${selectedVideo.video_path}`} 
+                    src={videoService.getVideoStreamUrl(selectedVideo)} 
                     type="video/mp4" 
                   />
                   <p className="text-white p-4 text-center">
                     Votre navigateur ne supporte pas la lecture vidéo.
                     <br />
                     <a 
-                      href={`/api/videos/stream/${selectedVideo.video_path}`} 
+                      href={videoService.getVideoStreamUrl(selectedVideo)} 
                       className="underline text-blue-300 hover:text-blue-100 ml-2"
                       download={selectedVideo.title}
                     >

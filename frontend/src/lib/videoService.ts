@@ -11,6 +11,8 @@ export interface Video {
   professor_name?: string;
   video_path: string;
   file_path?: string; // Legacy field for backward compatibility
+  video_url?: string; // CDN URL for video (added for Wasabi support)
+  thumbnail_url?: string; // CDN URL for thumbnail (added for Wasabi support)
   file_size?: number;
   duration?: number;
   mime_type?: string;
@@ -219,9 +221,22 @@ export class VideoService {
 
   // Get video stream URL for playback
   getVideoStreamUrl(video: Video): string {
+    // If video_url is provided (from backend with CDN URL), use it
+    if (video.video_url) {
+      console.log(`🎬 Using video_url from backend for video ${video.id}: ${video.video_url}`);
+      return video.video_url;
+    }
+    
+    // Otherwise, construct from video_path
     const videoPath = video.video_path || video.file_path;
     if (videoPath) {
-      // Use the streaming endpoint for better video delivery
+      // Check if it's already a full URL (CDN or external)
+      if (videoPath.startsWith('http://') || videoPath.startsWith('https://')) {
+        console.log(`🎬 Video path is already a URL for video ${video.id}: ${videoPath}`);
+        return videoPath;
+      }
+      
+      // Otherwise, construct the streaming endpoint URL
       const streamUrl = `${window.location.origin}/api/videos/stream/${videoPath}`;
       console.log(`🎬 Generated stream URL for video ${video.id} for Azizkh07: ${streamUrl}`);
       return streamUrl;
@@ -243,6 +258,12 @@ export class VideoService {
 
   // Get thumbnail URL
   getThumbnailUrl(video: Video): string {
+    // If thumbnail_url is provided (from backend with CDN URL), use it
+    if (video.thumbnail_url) {
+      console.log(`🖼️ Using thumbnail_url from backend for video ${video.id}: ${video.thumbnail_url}`);
+      return video.thumbnail_url;
+    }
+    
     if (video.thumbnail_path) {
       // If it's already a full URL, return as is
       if (video.thumbnail_path.startsWith('http')) {
