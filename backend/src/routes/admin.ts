@@ -152,12 +152,19 @@ router.put('/courses/:id', upload.single('cover_image'), async (req: AuthRequest
       values.push(is_active);
     }
 
-    // Handle cover image
+    // Handle cover image - upload to Wasabi
     if (req.file) {
-      const coverImageUrl = await uploadImage(req.file);
+      // Generate unique filename
+      const imageExtension = path.extname(req.file.originalname);
+      const imageFileName = `${crypto.randomUUID()}-${Date.now()}${imageExtension}`;
+      
+      // Upload to Wasabi
+      console.log('☁️ Uploading course cover image to Wasabi...');
+      const imageWasabiPath = generateWasabiPath('thumbnails', 'courses', imageFileName);
+      const coverImageUrl = await uploadToWasabi(req.file, imageWasabiPath, req.file.mimetype);
       updateFields.push('cover_image = ?', 'thumbnail_path = ?');
       values.push(coverImageUrl, coverImageUrl);
-      console.log('🖼️ New cover image uploaded for Medsaidabidi02:', coverImageUrl);
+      console.log('🖼️ New cover image uploaded to Wasabi:', coverImageUrl);
     }
 
     if (updateFields.length === 0) {
@@ -310,8 +317,15 @@ router.post('/blog', upload.single('cover_image'), async (req: AuthRequest, res)
 
     let coverImageUrl = null;
     if (req.file) {
-      coverImageUrl = await uploadImage(req.file);
-      console.log('🖼️ Blog cover image uploaded for Medsaidabidi02:', coverImageUrl);
+      // Generate unique filename
+      const imageExtension = path.extname(req.file.originalname);
+      const imageFileName = `${crypto.randomUUID()}-${Date.now()}${imageExtension}`;
+      
+      // Upload to Wasabi
+      console.log('☁️ Uploading blog cover image to Wasabi...');
+      const imageWasabiPath = generateWasabiPath('blog', 'covers', imageFileName);
+      coverImageUrl = await uploadToWasabi(req.file, imageWasabiPath, req.file.mimetype);
+      console.log('🖼️ Blog cover image uploaded to Wasabi:', coverImageUrl);
     }
 
     const result = await database.query(`
@@ -413,27 +427,34 @@ router.get('/dashboard/stats', async (req: AuthRequest, res) => {
 
 // ===== FILE MANAGEMENT =====
 
-// Upload general file
+// Upload general file - upload to Wasabi
 router.post('/upload', upload.single('file'), async (req: AuthRequest, res) => {
   try {
-    console.log('📤 File upload for admin Medsaidabidi02 at 2025-09-09 15:18:39');
+    console.log('📤 File upload for admin to Wasabi');
 
     if (!req.file) {
       return res.status(400).json({ error: 'No file provided' });
     }
 
-    const fileUrl = `/uploads/${req.file.filename}`;
-    console.log('✅ File uploaded for Medsaidabidi02:', fileUrl);
+    // Generate unique filename
+    const fileExtension = path.extname(req.file.originalname);
+    const fileName = `${crypto.randomUUID()}-${Date.now()}${fileExtension}`;
+    
+    // Upload to Wasabi under 'resources' path
+    console.log('☁️ Uploading file to Wasabi...');
+    const fileWasabiPath = generateWasabiPath('resources', 'general', fileName);
+    const fileUrl = await uploadToWasabi(req.file, fileWasabiPath, req.file.mimetype);
+    console.log('✅ File uploaded to Wasabi:', fileUrl);
 
     res.json({
       success: true,
       fileUrl,
-      filename: req.file.filename,
+      filename: fileName,
       originalName: req.file.originalname,
       size: req.file.size
     });
   } catch (error) {
-    console.error('❌ File upload error for Medsaidabidi02:', error);
+    console.error('❌ File upload error:', error);
     res.status(500).json({ error: 'Failed to upload file' });
   }
 });
