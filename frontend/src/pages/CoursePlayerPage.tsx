@@ -18,10 +18,21 @@ interface Video {
   order_index: number;
 }
 
+interface CourseMaterial {
+  id: number;
+  title: string;
+  file_path: string;
+  file_size: number;
+  file_type: string;
+}
+
 interface Course {
   id: number;
   title: string;
   description: string;
+  instructor: string;
+  total_duration: number;
+  materials: CourseMaterial[];
 }
 
 const CoursePlayerPage: React.FC = () => {
@@ -29,6 +40,7 @@ const CoursePlayerPage: React.FC = () => {
   const navigate = useNavigate();
   const { isAuthenticated, user } = useAuth();
   const videoRef = useRef<HTMLVideoElement>(null);
+  const mainContentRef = useRef<HTMLDivElement>(null);
 
   const [course, setCourse] = useState<Course | null>(null);
   const [videos, setVideos] = useState<Video[]>([]);
@@ -38,10 +50,27 @@ const CoursePlayerPage: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [loadingVideo, setLoadingVideo] = useState(false);
   const [error, setError] = useState<string>('');
+  const [showDescription, setShowDescription] = useState(false);
 
   useEffect(() => {
     loadCourseData();
   }, [courseId]);
+
+  useEffect(() => {
+    // Handle scroll to show/hide description
+    const handleScroll = () => {
+      if (mainContentRef.current) {
+        const scrollTop = mainContentRef.current.scrollTop;
+        setShowDescription(scrollTop > 100);
+      }
+    };
+
+    const mainContent = mainContentRef.current;
+    if (mainContent) {
+      mainContent.addEventListener('scroll', handleScroll);
+      return () => mainContent.removeEventListener('scroll', handleScroll);
+    }
+  }, []);
 
   const loadCourseData = async () => {
     try {
@@ -146,6 +175,21 @@ const CoursePlayerPage: React.FC = () => {
     return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
+  const formatFileSize = (bytes: number): string => {
+    if (!bytes) return '0 B';
+    const k = 1024;
+    const sizes = ['B', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return Math.round((bytes / Math.pow(k, i)) * 100) / 100 + ' ' + sizes[i];
+  };
+
+  const getTotalDuration = (): string => {
+    const totalSeconds = videos.reduce((acc, video) => acc + (video.duration || 0), 0);
+    const hours = Math.floor(totalSeconds / 3600);
+    const minutes = Math.floor((totalSeconds % 3600) / 60);
+    return `${hours}h ${minutes}min`;
+  };
+
   if (loading) {
     return (
       <>
@@ -185,8 +229,8 @@ const CoursePlayerPage: React.FC = () => {
       <Header />
       <div className="course-player-page">
         <div className="course-player-container">
-          {/* Main Video Player */}
-          <div className="video-player-section">
+          {/* Main Video Player and Description */}
+          <div className="video-player-section" ref={mainContentRef}>
             <div className="video-player-wrapper">
               {loadingVideo && (
                 <div className="video-loading-overlay">
@@ -236,6 +280,87 @@ const CoursePlayerPage: React.FC = () => {
                 )}
               </div>
             )}
+
+            {/* Course Description Section - Appears on Scroll */}
+            <div className={`course-description-section ${showDescription ? 'visible' : ''}`}>
+              {course && (
+                <>
+                  <div className="course-header">
+                    <h1 className="course-main-title">{course.title}</h1>
+                    <div className="course-meta">
+                      {course.instructor && (
+                        <div className="course-meta-item">
+                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                          </svg>
+                          <span>{course.instructor}</span>
+                        </div>
+                      )}
+                      <div className="course-meta-item">
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                        <span>{getTotalDuration()}</span>
+                      </div>
+                      <div className="course-meta-item">
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 4v16M17 4v16M3 8h4m10 0h4M3 12h18M3 16h4m10 0h4M4 20h16a1 1 0 001-1V5a1 1 0 00-1-1H4a1 1 0 00-1 1v14a1 1 0 001 1z" />
+                        </svg>
+                        <span>{videos.length} leçons</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="course-content">
+                    <h3 className="section-title">À propos de ce cours</h3>
+                    <p className="course-full-description">{course.description}</p>
+                  </div>
+
+                  {/* Course Materials Section */}
+                  {course.materials && course.materials.length > 0 && (
+                    <div className="course-materials">
+                      <h3 className="section-title">Matériel de cours</h3>
+                      <div className="materials-list">
+                        {course.materials.map((material) => (
+                          <div key={material.id} className="material-item">
+                            <div className="material-icon">
+                              {material.file_type === 'pdf' ? (
+                                <svg className="w-8 h-8" fill="currentColor" viewBox="0 0 20 20">
+                                  <path fillRule="evenodd" d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4z" clipRule="evenodd" />
+                                </svg>
+                              ) : (
+                                <svg className="w-8 h-8" fill="currentColor" viewBox="0 0 20 20">
+                                  <path fillRule="evenodd" d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4zm2 6a1 1 0 011-1h6a1 1 0 110 2H7a1 1 0 01-1-1zm1 3a1 1 0 100 2h6a1 1 0 100-2H7z" clipRule="evenodd" />
+                                </svg>
+                              )}
+                            </div>
+                            <div className="material-info">
+                              <div className="material-title">{material.title}</div>
+                              <div className="material-size">{formatFileSize(material.file_size)}</div>
+                            </div>
+                            <a
+                              href={material.file_path}
+                              download
+                              className="material-download-btn"
+                              onClick={(e) => {
+                                e.preventDefault();
+                                // TODO: Implement download with signed URL
+                                window.open(material.file_path, '_blank');
+                              }}
+                            >
+                              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                              </svg>
+                              Télécharger
+                            </a>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
           </div>
 
           {/* Lesson List Sidebar */}
@@ -287,6 +412,12 @@ const CoursePlayerPage: React.FC = () => {
                           <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
                             <path fillRule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clipRule="evenodd" />
                           </svg>
+                        </div>
+                      )}
+
+                      {isLocked && (
+                        <div className="lock-overlay">
+                          <span className="lock-message">Cette leçon est verrouillée</span>
                         </div>
                       )}
                     </div>
