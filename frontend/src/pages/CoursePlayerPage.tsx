@@ -70,6 +70,7 @@ const CoursePlayerPage: React.FC = () => {
       mainContent.addEventListener('scroll', handleScroll);
       return () => mainContent.removeEventListener('scroll', handleScroll);
     }
+    return undefined;
   }, []);
 
   const loadCourseData = async () => {

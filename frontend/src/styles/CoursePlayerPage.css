@@ -217,7 +217,7 @@
   height: 48px;
   display: flex;
   align-items: center;
-  justify-center;
+  justify-content: center;
   background-color: #3b82f6;
   color: white;
   border-radius: 8px;
