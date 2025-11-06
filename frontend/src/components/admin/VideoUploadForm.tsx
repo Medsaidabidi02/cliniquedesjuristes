@@ -630,67 +630,67 @@ const VideoUploadForm: React.FC<VideoUploadFormProps> = ({ onSuccess, onCancel, 
                 {/* Phase 4: HLS Path Input */}
                 {uploadMode === 'hls' ? (
                   <div className="space-y-4">
-                    <div className="bg-blue-100 border border-blue-300 rounded-lg p-4">
-                      <div className="flex items-start space-x-2">
-                        <span className="text-blue-600 text-xl">ℹ️</span>
-                        <div className="flex-1">
-                          <h4 className="font-semibold text-blue-900 mb-1">Mode HLS (Streaming Segmenté)</h4>
-                          <p className="text-sm text-blue-800">
-                            Entrez le chemin du fichier manifeste HLS (.m3u8) qui a été préalablement uploadé sur Hetzner Object Storage.
-                            Les segments vidéo (.ts) doivent être dans le même dossier que le manifeste.
-                          </p>
+                      <div className="bg-blue-100 border border-blue-300 rounded-lg p-4">
+                        <div className="flex items-start space-x-2">
+                          <span className="text-blue-600 text-xl">ℹ️</span>
+                          <div className="flex-1">
+                            <h4 className="font-semibold text-blue-900 mb-1">Mode HLS (Streaming Segmenté)</h4>
+                            <p className="text-sm text-blue-800">
+                              Entrez le chemin du fichier manifeste HLS (.m3u8) qui a été préalablement uploadé sur Hetzner Object Storage.
+                              Les segments vidéo (.ts) doivent être dans le même dossier que le manifeste.
+                            </p>
+                          </div>
                         </div>
                       </div>
-                    </div>
-                    
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">
-                        Chemin du manifeste HLS (.m3u8) *
-                      </label>
-                      <input
-                        type="text"
-                        value={hlsManifestPath}
-                        onChange={(e) => {
-                          setHlsManifestPath(e.target.value);
-                          if (error) setError('');
-                        }}
-                        placeholder="Ex: hls/course-1/subject-5/video-123/playlist.m3u8"
-                        className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 font-mono text-sm"
-                        required
-                        disabled={loading}
-                      />
-                      <p className="text-xs text-gray-500 mt-1">
-                        Format: <code className="bg-gray-100 px-1 py-0.5 rounded">hls/course-{'{id}'}/subject-{'{id}'}/video-{'{id}'}/playlist.m3u8</code>
-                      </p>
-                    </div>
-                    
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">
-                        Type de stockage
-                      </label>
-                      <select
-                        value={storageType}
-                        onChange={(e) => setStorageType(e.target.value as 'local' | 'hetzner')}
-                        className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                        disabled={loading}
-                      >
-                        <option value="local">📁 Local (Serveur)</option>
-                        <option value="hetzner">☁️ Hetzner Object Storage</option>
-                      </select>
-                      <p className="text-xs text-gray-500 mt-1">
-                        Sélectionnez où les fichiers HLS sont stockés
-                      </p>
-                    </div>
-                    
-                    {hlsManifestPath && (
-                      <div className="bg-white border border-green-200 rounded-lg p-4">
-                        <h4 className="font-semibold text-green-900 mb-2">✅ Aperçu</h4>
-                        <div className="space-y-1 text-sm">
-                          <div><span className="font-medium">Manifeste:</span> <code className="bg-gray-100 px-1 py-0.5 rounded text-xs">{hlsManifestPath}</code></div>
-                          <div><span className="font-medium">Type:</span> {hlsManifestPath.endsWith('.m3u8') ? '✅ HLS Valide' : '❌ Doit finir par .m3u8'}</div>
-                          <div><span className="font-medium">Stockage:</span> {storageType === 'hetzner' ? '☁️ Hetzner' : '📁 Local'}</div>
-                        </div>
+                      
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                          Chemin du manifeste HLS (.m3u8) *
+                        </label>
+                        <input
+                          type="text"
+                          value={hlsManifestPath}
+                          onChange={(e) => {
+                            setHlsManifestPath(e.target.value);
+                            if (error) setError('');
+                          }}
+                          placeholder="Ex: hls/course-1/subject-5/video-123/playlist.m3u8"
+                          className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 font-mono text-sm"
+                          required
+                          disabled={loading}
+                        />
+                        <p className="text-xs text-gray-500 mt-1">
+                          Format: <code className="bg-gray-100 px-1 py-0.5 rounded">hls/course-{'{id}'}/subject-{'{id}'}/video-{'{id}'}/playlist.m3u8</code>
+                        </p>
                       </div>
+                      
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                          Type de stockage
+                        </label>
+                        <select
+                          value={storageType}
+                          onChange={(e) => setStorageType(e.target.value as 'local' | 'hetzner')}
+                          className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                          disabled={loading}
+                        >
+                          <option value="local">📁 Local (Serveur)</option>
+                          <option value="hetzner">☁️ Hetzner Object Storage</option>
+                        </select>
+                        <p className="text-xs text-gray-500 mt-1">
+                          Sélectionnez où les fichiers HLS sont stockés
+                        </p>
+                      </div>
+                      
+                      {hlsManifestPath && (
+                        <div className="bg-white border border-green-200 rounded-lg p-4">
+                          <h4 className="font-semibold text-green-900 mb-2">✅ Aperçu</h4>
+                          <div className="space-y-1 text-sm">
+                            <div><span className="font-medium">Manifeste:</span> <code className="bg-gray-100 px-1 py-0.5 rounded text-xs">{hlsManifestPath}</code></div>
+                            <div><span className="font-medium">Type:</span> {hlsManifestPath.endsWith('.m3u8') ? '✅ HLS Valide' : '❌ Doit finir par .m3u8'}</div>
+                            <div><span className="font-medium">Stockage:</span> {storageType === 'hetzner' ? '☁️ Hetzner' : '📁 Local'}</div>
+                          </div>
+                        </div>
                     )}
                   </div>
                 ) : (
@@ -756,9 +756,10 @@ const VideoUploadForm: React.FC<VideoUploadFormProps> = ({ onSuccess, onCancel, 
                     </div>
                   )}
                 </div>
-              </div>
+              )}
+            </div>
 
-              {/* Thumbnail Upload */}
+            {/* Thumbnail Upload */}
               <div className="bg-orange-50 p-6 rounded-lg">
                 <h3 className="text-lg font-semibold text-orange-900 mb-4">🖼️ Miniature (Optionnel)</h3>
                 
