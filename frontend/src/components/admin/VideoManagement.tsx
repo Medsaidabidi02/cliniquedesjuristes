@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import { api, getErrorMessage } from '../../lib/api';
-import VideoUploadForm from './VideoUploadForm';
 
 interface Video {
   id: number;
@@ -42,7 +41,6 @@ const VideoManagement: React.FC = () => {
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [showUploadForm, setShowUploadForm] = useState(false);
   const [selectedVideo, setSelectedVideo] = useState<Video | null>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState<number | null>(null);
   
@@ -88,64 +86,6 @@ const VideoManagement: React.FC = () => {
     }
   };
 
-  const handleUploadSuccess = (newVideo: Video) => {
-    console.log('✅ Video upload successful for Medsaidabidi02 at 2025-09-09 17:05:28, updating UI instantly...');
-    console.log('📝 Received video data:', newVideo);
-    
-    // ✅ FIXED: Handle different response structures from MySQL5
-    let actualVideo: Video;
-    
-    if (newVideo && typeof newVideo === 'object') {
-      // Check if it's wrapped in a success response
-      if ('success' in newVideo && 'data' in newVideo) {
-        actualVideo = (newVideo as any).data;
-        console.log('✅ Extracted video data from success wrapper:', actualVideo);
-      } 
-      // Check if it has video properties directly
-      else if ('id' in newVideo && 'title' in newVideo) {
-        actualVideo = newVideo;
-        console.log('✅ Using direct video object:', actualVideo);
-      }
-      // Fallback - try to find video data in any nested structure
-      else {
-        // Look for video-like object in any property
-        const possibleVideo = Object.values(newVideo).find(
-          (value: any) => value && typeof value === 'object' && 'id' in value && 'title' in value
-        );
-        
-        if (possibleVideo) {
-          actualVideo = possibleVideo as Video;
-          console.log('✅ Found video data in nested structure:', actualVideo);
-        } else {
-          console.error('❌ Could not extract video data from response:', newVideo);
-          // Show success message but reload data to get the actual video
-          setShowUploadForm(false);
-          loadAllData();
-          return;
-        }
-      }
-    } else {
-      console.error('❌ Invalid video data received:', newVideo);
-      // Show success message but reload data
-      setShowUploadForm(false);
-      loadAllData();
-      return;
-    }
-    
-    // Validate that we have the essential video properties
-    if (!actualVideo.id || !actualVideo.title) {
-      console.error('❌ Video data missing essential properties:', actualVideo);
-      setShowUploadForm(false);
-      loadAllData();
-      return;
-    }
-    
-    setShowUploadForm(false);
-    
-    // ✅ FIXED: Add new video to state instantly instead of reloading
-    setVideos(prevVideos => [actualVideo, ...prevVideos]);
-    console.log('✅ Video added to UI instantly for Medsaidabidi02');
-  };
 
   const handleDeleteVideo = async (id: number) => {
     try {
@@ -270,13 +210,10 @@ const VideoManagement: React.FC = () => {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold text-gray-900">🎬 Gestion des Vidéos</h1>
+          <p className="text-sm text-gray-600 mt-1">
+            Les vidéos doivent être uploadées manuellement sur Hetzner S3. Voir HETZNER_SETUP.md pour les instructions.
+          </p>
         </div>
-        <button
-          onClick={() => setShowUploadForm(true)}
-          className="bg-purple-600 hover:bg-purple-700 text-white px-6 py-2 rounded-lg font-medium transition-colors"
-        >
-          ➕ Ajouter une Vidéo
-        </button>
       </div>
 
       {error && (
@@ -514,21 +451,19 @@ const VideoManagement: React.FC = () => {
               : "Aucune vidéo ne correspond à vos critères de recherche."
             }
           </p>
-          <button
-            onClick={() => setShowUploadForm(true)}
-            className="bg-purple-600 hover:bg-purple-700 text-white px-6 py-2 rounded-lg transition-colors"
-          >
-            ➕ Ajouter une Vidéo
-          </button>
+          {videos.length === 0 && (
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 text-left">
+              <p className="text-sm text-blue-800 font-medium mb-2">📚 Instructions d'upload manuel:</p>
+              <ol className="text-sm text-blue-700 space-y-1 list-decimal list-inside">
+                <li>Convertir la vidéo en HLS avec FFmpeg</li>
+                <li>Uploader sur Hetzner S3 avec AWS CLI</li>
+                <li>Ajouter l'enregistrement dans la base de données</li>
+              </ol>
+              <p className="text-xs text-blue-600 mt-2">Voir HETZNER_SETUP.md pour plus de détails</p>
+            </div>
+          )}
         </div>
       )}
-
-      {/* Upload Form */}
-      <VideoUploadForm
-        isOpen={showUploadForm}
-        onSuccess={handleUploadSuccess}
-        onCancel={() => setShowUploadForm(false)}
-      />
 
       {/* ✅ FIXED: Delete Confirmation Modal */}
       {showDeleteConfirm && (
