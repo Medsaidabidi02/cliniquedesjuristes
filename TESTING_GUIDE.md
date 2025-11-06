@@ -1,457 +1,420 @@
-# Testing Guide - Session-Based Login System
+# Testing Guide - Pulling Videos from Hetzner Bucket
 
-This guide provides step-by-step instructions for manually testing all the new session-based login features.
+This guide shows you how to test video playback from Hetzner S3 bucket on your local machine before deployment.
 
 ## Prerequisites
 
-1. **Database Migration**: Ensure you've run the SQL migration:
-   ```bash
-   mysql -u your_user -p your_database < backend/migrations/create_session_and_ban_tables.sql
-   ```
+Before testing, you need:
+1. A Hetzner Object Storage account with a bucket created
+2. At least one test video uploaded to your bucket in HLS format
+3. Your Hetzner credentials (Access Key, Secret Key, Endpoint)
 
-2. **Backend Running**: 
-   ```bash
-   cd backend
-   npm run build
-   npm start
-   ```
+## Step 1: Set Up Test Video on Hetzner
 
-3. **Frontend Running**:
-   ```bash
-   cd frontend
-   npm install
-   npm start
-   ```
+### Option A: Use a Public Test HLS Stream (Quick Test)
 
-## Test 1: Single Active Session per User
+For quick testing without uploading your own video, you can temporarily use a public test HLS stream:
 
-**Goal**: Verify only one device can be logged in at a time.
-
-### Steps:
-
-1. **Open Browser 1 (e.g., Chrome)**
-   - Navigate to the login page
-   - Log in with test credentials: `user@example.com` / `password123`
-   - ✅ Expected: Login succeeds, redirected to dashboard
-
-2. **Open Browser 2 (e.g., Firefox)**
-   - Navigate to the login page
-   - Log in with the **same credentials**: `user@example.com` / `password123`
-   - ✅ Expected: Login succeeds, redirected to dashboard
-
-3. **Go back to Browser 1**
-   - Try to navigate to any protected page OR refresh the page
-   - ✅ Expected: See error message "Session expired - logged in from another device"
-   - ✅ Expected: Automatically redirected to login page with message:
-     ```
-     "Vous avez été déconnecté car vous vous êtes connecté sur un autre appareil."
-     ```
-
-### Database Verification:
-
-```sql
--- Check sessions table - should see only 1 valid session for the user
-SELECT id, user_id, valid, ip_address, created_at, last_activity
-FROM sessions
-WHERE user_id = (SELECT id FROM users WHERE email = 'user@example.com')
-ORDER BY created_at DESC
-LIMIT 5;
-```
-
-Expected results:
-- One session with `valid = TRUE` (Browser 2)
-- One or more sessions with `valid = FALSE` (Browser 1)
-
----
-
-## Test 2: 1-Hour Re-Login Ban
-
-**Goal**: Verify users can't log in immediately after logout.
-
-### Steps:
-
-1. **Log in**
-   - Navigate to the login page
-   - Log in with test credentials: `user@example.com` / `password123`
-   - ✅ Expected: Login succeeds
-
-2. **Log out**
-   - Click the logout button
-   - ✅ Expected: Redirected to login page
-
-3. **Try to log in again immediately**
-   - Enter the same credentials: `user@example.com` / `password123`
-   - Click "Sign in"
-   - ✅ Expected: See error message:
-     ```
-     "Compte temporairement verrouillé. Réessayez dans 60 minute(s)."
-     ```
-   - ✅ Expected: Login fails with HTTP 403 status
-
-4. **Wait 1 hour (or manually remove ban)**
-   - Option A: Wait 60 minutes
-   - Option B: Manually remove ban in database:
-     ```sql
-     DELETE FROM login_bans WHERE user_id = (SELECT id FROM users WHERE email = 'user@example.com');
-     ```
-
-5. **Try to log in again**
-   - Enter credentials: `user@example.com` / `password123`
-   - ✅ Expected: Login succeeds
-
-### Database Verification:
-
-```sql
--- Check active bans
-SELECT lb.id, u.email, lb.banned_until, 
-       TIMESTAMPDIFF(MINUTE, NOW(), lb.banned_until) as remaining_minutes
-FROM login_bans lb
-JOIN users u ON lb.user_id = u.id
-WHERE lb.banned_until > NOW();
-```
-
-Expected results after logout:
-- One ban record for the user
-- `remaining_minutes` should be approximately 60
-
----
-
-## Test 3: One-Tab Policy
-
-**Goal**: Verify only one browser tab can be active at a time.
-
-### Steps:
-
-1. **Open Tab 1**
-   - Navigate to the login page
-   - Log in with test credentials: `user@example.com` / `password123`
-   - ✅ Expected: Login succeeds, redirected to dashboard
-   - ✅ Expected: Can navigate normally
-
-2. **Open Tab 2** (in the same browser window)
-   - Right-click on Tab 1 and select "Duplicate Tab"
-   - OR manually open a new tab and navigate to the same URL
-   - ✅ Expected: Tab 2 loads normally and can navigate
-
-3. **Go back to Tab 1**
-   - Click on Tab 1
-   - Try to navigate OR wait a few seconds
-   - ✅ Expected: Tab 1 shows logout message:
-     ```
-     "Vous avez été déconnecté car vous avez ouvert une autre session dans un autre onglet."
-     ```
-   - ✅ Expected: Tab 1 automatically redirects to login page
-
-4. **Tab 2 remains active**
-   - Tab 2 should still work normally
-   - ✅ Expected: Can navigate and use the application
-
-### Browser Console Verification:
-
-Open browser developer tools (F12) in both tabs and check console logs:
-
-**Tab 1 (inactive):**
-```
-🔒 One-tab policy initialized for tab abc12345
-⛔ Tab xyz67890 claimed active status. Logging out this tab...
-👋 One-tab policy triggered logout for tab abc12345
-🔄 Redirecting to /login
-```
-
-**Tab 2 (active):**
-```
-🔒 One-tab policy initialized for tab xyz67890
-⚠️ Another tab (abc12345) was active. Taking over...
-✅ Heartbeat updated
-```
-
----
-
-## Test 4: IP and User-Agent Tracking
-
-**Goal**: Verify sessions track IP address and user-agent information.
-
-### Steps:
-
-1. **Log in from different locations/browsers**
-   - Log in from Chrome
-   - Log in from Firefox
-   - Log in from mobile device (optional)
-
-2. **Check database**
+1. **Create a test video record in your database:**
    ```sql
-   SELECT 
-     s.id,
-     u.email,
-     s.ip_address,
-     s.user_agent,
-     s.created_at,
-     s.valid
-   FROM sessions s
-   JOIN users u ON s.user_id = u.id
-   WHERE u.email = 'user@example.com'
-   ORDER BY s.created_at DESC
-   LIMIT 10;
-   ```
-
-### Expected Results:
-
-- Each session should have different `ip_address` values (if logging in from different networks)
-- Each session should have different `user_agent` values showing browser/device info:
-  - Chrome: `Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/...`
-  - Firefox: `Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:...) Gecko/...`
-  - Mobile: `Mozilla/5.0 (iPhone; CPU iPhone OS ...`
-
----
-
-## Test 5: Session Validation on Every Request
-
-**Goal**: Verify sessions are validated on every authenticated API request.
-
-### Steps:
-
-1. **Log in and open browser dev tools**
-   - Navigate to login page
-   - Open Developer Tools (F12)
-   - Go to Network tab
-   - Log in with credentials
-
-2. **Make API requests**
-   - Navigate to different pages (courses, profile, etc.)
-   - Each page load makes API requests
-
-3. **Check request headers**
-   - In Network tab, click on any API request
-   - Go to "Headers" tab
-   - ✅ Expected: See `Authorization: Bearer <token>` header
-
-4. **Log in from another browser**
-   - Open a different browser
-   - Log in with the same credentials
-   - This invalidates the first browser's session
-
-5. **Go back to first browser**
-   - Try to navigate to any page
-   - Check Network tab for API responses
-   - ✅ Expected: API returns 401 with:
-     ```json
-     {
-       "error": "Session expired - logged in from another device",
-       "sessionExpired": true,
-       "loggedInElsewhere": true
-     }
-     ```
-   - ✅ Expected: Frontend automatically redirects to login
-
----
-
-## Test 6: Session Cleanup and Monitoring
-
-**Goal**: Verify database tracking and cleanup queries work.
-
-### Database Queries:
-
-1. **Check all active sessions:**
-   ```sql
-   SELECT 
-     s.id,
-     s.user_id,
-     u.email,
-     s.ip_address,
-     s.created_at,
-     s.last_activity,
-     TIMESTAMPDIFF(MINUTE, s.last_activity, NOW()) as idle_minutes
-   FROM sessions s
-   JOIN users u ON s.user_id = u.id
-   WHERE s.valid = TRUE
-   ORDER BY s.last_activity DESC;
-   ```
-
-2. **Check session statistics:**
-   ```sql
-   SELECT 
-     u.email,
-     COUNT(s.id) as total_sessions,
-     SUM(CASE WHEN s.valid = TRUE THEN 1 ELSE 0 END) as active_sessions,
-     SUM(CASE WHEN s.valid = FALSE THEN 1 ELSE 0 END) as inactive_sessions
-   FROM users u
-   LEFT JOIN sessions s ON u.id = s.user_id
-   GROUP BY u.id, u.email
-   HAVING total_sessions > 0
-   ORDER BY total_sessions DESC;
-   ```
-
-3. **Check current bans:**
-   ```sql
-   SELECT 
-     lb.id,
-     lb.user_id,
-     u.email,
-     lb.banned_until,
-     TIMESTAMPDIFF(MINUTE, NOW(), lb.banned_until) as remaining_minutes,
-     lb.reason
-   FROM login_bans lb
-   JOIN users u ON lb.user_id = u.id
-   WHERE lb.banned_until > NOW()
-   ORDER BY lb.banned_until;
-   ```
-
-4. **Clean up old invalid sessions (optional):**
-   ```sql
-   -- Delete invalid sessions older than 30 days
-   DELETE FROM sessions 
-   WHERE valid = FALSE 
-   AND created_at < DATE_SUB(NOW(), INTERVAL 30 DAY);
+   -- Connect to your database
+   mysql -u root -p your_database_name
    
-   -- Check results
-   SELECT COUNT(*) as deleted_count FROM sessions WHERE valid = FALSE;
-   ```
-
----
-
-## Test 7: Error Handling and Edge Cases
-
-### Test 7.1: Ban Expiry Edge Case
-
-1. Set a ban that expires in 1 minute:
-   ```sql
-   INSERT INTO login_bans (user_id, banned_until, reason)
-   VALUES (
-     (SELECT id FROM users WHERE email = 'user@example.com'),
-     DATE_ADD(NOW(), INTERVAL 1 MINUTE),
-     'Test ban'
+   -- Insert a test record that points to a public HLS stream
+   INSERT INTO videos (
+     title,
+     description,
+     subject_id,
+     video_path,
+     is_active,
+     created_at,
+     updated_at
+   ) VALUES (
+     'Test Video - Big Buck Bunny',
+     'Test HLS stream from public source',
+     1,  -- Make sure this subject_id exists in your subjects table
+     'test/sample.m3u8',  -- This will be overridden in testing
+     true,
+     NOW(),
+     NOW()
    );
    ```
 
-2. Try to log in immediately → Should fail
-3. Wait 61 seconds
-4. Try to log in again → Should succeed
-
-### Test 7.2: Multiple Logout Attempts
-
-1. Log in successfully
-2. Click logout button multiple times quickly
-3. ✅ Expected: No errors, ban is set only once
-4. Check database:
-   ```sql
-   SELECT COUNT(*) FROM login_bans 
-   WHERE user_id = (SELECT id FROM users WHERE email = 'user@example.com');
-   ```
-5. ✅ Expected: Only 1 ban record (not multiple)
-
-### Test 7.3: Token Expiration vs Session Expiration
-
-1. Log in with a very short token expiry (requires changing JWT_EXPIRES_IN to `1m`)
-2. Wait 2 minutes
-3. Try to make an API request
-4. ✅ Expected: Token expired error
-5. ✅ Expected: Redirected to login
-
----
-
-## Test 8: Load Testing (Optional)
-
-### Concurrent Login Test:
-
-1. Create a simple script to test concurrent logins:
-   ```bash
-   # Install httpie if needed: pip install httpie
+2. **Temporarily modify backend for testing** (we'll revert this):
    
-   # Test 10 concurrent logins
-   for i in {1..10}; do
-     http POST localhost:5001/api/auth/login \
-       email=user@example.com \
-       password=password123 &
-   done
-   wait
+   Edit `backend/src/services/hetznerService.ts` to add a test override at the top of `getPublicVideoUrl`:
+   
+   ```typescript
+   export const getPublicVideoUrl = (videoPath: string): string => {
+     // TEMPORARY TEST OVERRIDE - Remove after testing
+     if (videoPath === 'test/sample.m3u8') {
+       const testUrl = 'https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8';
+       console.log(`🧪 Using test HLS URL: ${testUrl}`);
+       return testUrl;
+     }
+     // END TEST OVERRIDE
+     
+     if (!config.hetzner.enabled) {
+       throw new Error('Hetzner storage is not enabled');
+     }
+     // ... rest of function
    ```
 
-2. Check database:
+### Option B: Upload Your Own Test Video to Hetzner (Recommended)
+
+1. **Convert a test video to HLS:**
+   ```bash
+   # Download a short test video or use your own
+   # For example, download Big Buck Bunny trailer (60 seconds)
+   wget http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4 -O test.mp4
+   
+   # Convert to HLS
+   mkdir -p test-output
+   ffmpeg -i test.mp4 \
+     -c:v libx264 -c:a aac \
+     -hls_time 6 \
+     -hls_list_size 0 \
+     -hls_segment_filename "test-output/segment_%03d.ts" \
+     -f hls \
+     test-output/output.m3u8
+   ```
+
+2. **Configure AWS CLI with your Hetzner credentials:**
+   ```bash
+   # Set your Hetzner credentials
+   aws configure set aws_access_key_id YOUR_HETZNER_ACCESS_KEY
+   aws configure set aws_secret_access_key YOUR_HETZNER_SECRET_KEY
+   aws configure set region fsn1
+   ```
+
+3. **Upload to your Hetzner bucket:**
+   ```bash
+   # Replace with your actual values:
+   # - BUCKET_NAME: Your Hetzner bucket name
+   # - ENDPOINT: Your Hetzner endpoint (e.g., https://fsn1.your-objectstorage.com)
+   
+   BUCKET_NAME="your-bucket-name"
+   ENDPOINT="https://fsn1.your-objectstorage.com"
+   
+   # Upload manifest
+   aws s3 cp test-output/output.m3u8 \
+     "s3://$BUCKET_NAME/test/output.m3u8" \
+     --endpoint-url="$ENDPOINT" \
+     --content-type "application/vnd.apple.mpegurl" \
+     --cache-control "public, max-age=3600"
+   
+   # Upload segments
+   aws s3 cp test-output/ \
+     "s3://$BUCKET_NAME/test/" \
+     --recursive \
+     --exclude "*" \
+     --include "*.ts" \
+     --endpoint-url="$ENDPOINT" \
+     --content-type "video/MP2T" \
+     --cache-control "public, max-age=31536000"
+   ```
+
+4. **Verify upload:**
+   ```bash
+   # List files in bucket
+   aws s3 ls "s3://$BUCKET_NAME/test/" --endpoint-url="$ENDPOINT"
+   
+   # Test public access
+   curl -I "https://$ENDPOINT/$BUCKET_NAME/test/output.m3u8"
+   # Should return 200 OK
+   ```
+
+5. **Insert test video in database:**
    ```sql
-   SELECT COUNT(*) as valid_sessions
-   FROM sessions
-   WHERE user_id = (SELECT id FROM users WHERE email = 'user@example.com')
-   AND valid = TRUE;
+   INSERT INTO videos (
+     title,
+     description,
+     subject_id,
+     video_path,
+     is_active,
+     created_at,
+     updated_at
+   ) VALUES (
+     'Test Video - From Hetzner',
+     'Test video uploaded to Hetzner bucket',
+     1,  -- Make sure this subject_id exists
+     'test/output.m3u8',  -- Path in your bucket
+     true,
+     NOW(),
+     NOW()
+   );
    ```
 
-3. ✅ Expected: Only 1 valid session (the last one)
+## Step 2: Configure Backend for Testing
 
----
+1. **Create backend `.env` file:**
+   ```bash
+   cd backend
+   cp .env.example .env
+   ```
 
-## Common Issues and Troubleshooting
+2. **Edit `backend/.env` with your Hetzner credentials:**
+   ```env
+   # Server Configuration
+   PORT=5001
+   NODE_ENV=development
+   
+   # Database Configuration (update with your credentials)
+   DATABASE_URL=mysql://username:password@localhost:3306/your_database_name
+   
+   # Security
+   JWT_SECRET=test-jwt-secret-key
+   JWT_EXPIRES_IN=24h
+   
+   # Hetzner Object Storage - UPDATE THESE VALUES!
+   ENABLE_HETZNER=true
+   HETZNER_ENDPOINT=https://fsn1.your-objectstorage.com
+   HETZNER_BUCKET=your-bucket-name
+   
+   # HLS Streaming
+   ENABLE_HLS=true
+   
+   # URLs
+   FRONTEND_URL=http://localhost:3000
+   API_URL=http://localhost:5001
+   BASE_URL=http://localhost:5001
+   
+   # Admin Credentials
+   DEFAULT_ADMIN_EMAIL=admin@test.com
+   DEFAULT_ADMIN_PASSWORD=admin123
+   ```
 
-### Issue 1: "Session expired" immediately after login
+3. **Important: Replace placeholder values:**
+   - `HETZNER_ENDPOINT`: Your actual Hetzner endpoint (find in Hetzner console)
+   - `HETZNER_BUCKET`: Your bucket name
+   - `DATABASE_URL`: Your database connection string
 
-**Cause:** Tables don't exist or JWT doesn't include sessionId
+## Step 3: Configure Frontend for Testing
+
+1. **Create frontend `.env` file:**
+   ```bash
+   cd frontend
+   cp .env.example .env
+   ```
+
+2. **Edit `frontend/.env`:**
+   ```env
+   REACT_APP_API_URL=http://localhost:5001
+   ```
+
+## Step 4: Start the Application
+
+1. **Start the backend:**
+   ```bash
+   cd backend
+   npm install  # If not already done
+   npm run dev
+   ```
+   
+   You should see output like:
+   ```
+   🎬 Videos API loaded - Hetzner HLS-only mode
+   🚀 Server running on port 5001
+   🎬 Hetzner HLS enabled: true
+   ```
+
+2. **In a new terminal, start the frontend:**
+   ```bash
+   cd frontend
+   npm install  # If not already done
+   npm start
+   ```
+   
+   Browser should open at `http://localhost:3000`
+
+## Step 5: Test Video Playback
+
+1. **Navigate to videos page** in your browser (e.g., `http://localhost:3000/videos`)
+
+2. **Open browser DevTools** (F12 or Right-click → Inspect)
+
+3. **Go to Network tab** and filter by "m3u8"
+
+4. **Click on a video** to play it
+
+5. **Check the Network tab:**
+   - You should see requests to your Hetzner endpoint (not localhost)
+   - Example: `https://fsn1.your-objectstorage.com/your-bucket-name/test/output.m3u8`
+   - Look for the `Remote Address` in the request headers
+
+6. **Check the Console tab** for logs:
+   - Look for: `🎬 Generated public HLS URL: https://...`
+   - This confirms the URL being used
+
+## Step 6: Verify It's Working
+
+### Backend Verification
+
+Check your backend terminal for these logs:
+```
+📋 GET /api/videos/1 - Fetching video with public URL
+🎬 Generated public HLS URL: https://fsn1.your-objectstorage.com/your-bucket-name/test/output.m3u8
+✅ Found video 1 with public HLS URL
+```
+
+### Frontend Verification
+
+In browser console, you should see:
+```
+🎬 Loading HLS video: https://fsn1.your-objectstorage.com/your-bucket-name/test/output.m3u8
+✅ HLS manifest parsed successfully
+```
+
+### Network Verification
+
+In Network tab:
+1. Find the `.m3u8` request
+2. Check the **Request URL** - should start with your Hetzner endpoint
+3. Check **Response Headers** - should include CORS headers if configured
+4. Status should be `200 OK`
+
+## Troubleshooting
+
+### Issue 1: "Hetzner storage is not enabled"
+
+**Cause:** `ENABLE_HETZNER` is not set to `true`
 
 **Fix:**
-```sql
--- Check if tables exist
-SHOW TABLES LIKE 'sessions';
-SHOW TABLES LIKE 'login_bans';
-
--- If missing, run migration
-SOURCE backend/migrations/create_session_and_ban_tables.sql;
+```bash
+# In backend/.env, make sure:
+ENABLE_HETZNER=true
 ```
 
-### Issue 2: One-tab policy not working
+### Issue 2: Video still shows localhost URLs
 
-**Cause:** localStorage blocked or different origins
+**Cause:** Backend not properly configured or not restarted
 
-**Check:**
-1. Open browser console in both tabs
-2. Type: `localStorage.getItem('activeTabId')`
-3. If null or error, localStorage is blocked
+**Fix:**
+1. Stop backend (Ctrl+C)
+2. Verify `backend/.env` has correct values
+3. Restart: `npm run dev`
+4. Check logs for: `🎬 Hetzner HLS enabled: true`
 
-**Fix:** Enable localStorage in browser settings
+### Issue 3: CORS errors in browser
 
-### Issue 3: Ban not expiring
+**Cause:** Hetzner bucket CORS not configured
 
-**Cause:** Server timezone mismatch
+**Fix:** Configure CORS on your bucket:
+```bash
+cat > cors-config.json << 'EOF'
+{
+  "CORSRules": [
+    {
+      "AllowedOrigins": ["*"],
+      "AllowedMethods": ["GET", "HEAD"],
+      "AllowedHeaders": ["*"],
+      "ExposeHeaders": ["ETag", "Content-Length"],
+      "MaxAgeSeconds": 3600
+    }
+  ]
+}
+EOF
 
-**Check:**
-```sql
-SELECT NOW() as current_time, @@global.time_zone, @@session.time_zone;
+aws s3api put-bucket-cors \
+  --bucket your-bucket-name \
+  --cors-configuration file://cors-config.json \
+  --endpoint-url=https://fsn1.your-objectstorage.com
 ```
 
-**Fix:** Ensure MySQL and application server use same timezone
+### Issue 4: 403 Forbidden when accessing video
 
----
+**Cause:** Bucket is not public
 
-## Success Criteria
+**Fix:** Make bucket public:
+```bash
+cat > bucket-policy.json << 'EOF'
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "PublicReadGetObject",
+      "Effect": "Allow",
+      "Principal": "*",
+      "Action": "s3:GetObject",
+      "Resource": "arn:aws:s3:::your-bucket-name/*"
+    }
+  ]
+}
+EOF
 
-All tests pass when:
+aws s3api put-bucket-policy \
+  --bucket your-bucket-name \
+  --policy file://bucket-policy.json \
+  --endpoint-url=https://fsn1.your-objectstorage.com
+```
 
-✅ **Test 1**: Only one session is active per user, old sessions invalidated
-✅ **Test 2**: 1-hour ban prevents immediate re-login after logout
-✅ **Test 3**: Opening new tab logs out old tab automatically  
-✅ **Test 4**: Sessions track IP address and user-agent correctly
-✅ **Test 5**: Invalid sessions get 401 error on API requests
-✅ **Test 6**: Database queries show correct session states
-✅ **Test 7**: Edge cases handled gracefully without errors
-✅ **Test 8**: System handles concurrent logins correctly
+### Issue 5: Cannot find video in database
 
----
+**Fix:** Make sure you have a subject_id that exists:
+```sql
+-- Check existing subjects
+SELECT id, title FROM subjects;
 
-## Next Steps After Testing
+-- Update video with valid subject_id
+UPDATE videos SET subject_id = 1 WHERE id = (SELECT MAX(id) FROM videos);
+```
 
-1. **Monitor Production**: Set up alerts for unusual patterns
-   - Multiple logins from different IPs for same user
-   - High frequency of login bans
-   - Sessions that never update last_activity
+## Quick Test Checklist
 
-2. **Set Up Cleanup Cron Job**:
-   ```bash
-   # Add to crontab (runs daily at 3 AM)
-   0 3 * * * mysql -u user -p database < /path/to/cleanup.sql
-   ```
+- [ ] Hetzner bucket created
+- [ ] Test video uploaded to bucket (or using public test stream)
+- [ ] Bucket is public (returns 200 when curling .m3u8 URL)
+- [ ] CORS configured on bucket
+- [ ] `backend/.env` has `ENABLE_HETZNER=true`
+- [ ] `backend/.env` has correct `HETZNER_ENDPOINT` and `HETZNER_BUCKET`
+- [ ] Backend restarted after `.env` changes
+- [ ] Frontend `.env` has `REACT_APP_API_URL=http://localhost:5001`
+- [ ] Video record exists in database with correct `video_path`
+- [ ] Browser DevTools Network tab shows requests to Hetzner (not localhost)
 
-3. **Create Admin Dashboard** (optional):
-   - Show active sessions per user
-   - Display ban status and remaining time
-   - Allow manual ban removal for support
+## Example: Complete Test Setup
 
-4. **Add Monitoring Metrics**:
-   - Track average session duration
-   - Monitor ban trigger frequency
-   - Alert on suspicious multi-IP logins
+Here's a complete example you can copy-paste (replace YOUR_* values):
+
+```bash
+# 1. Backend configuration
+cd backend
+cat > .env << 'EOF'
+PORT=5001
+NODE_ENV=development
+DATABASE_URL=mysql://username:password@localhost:3306/your_db
+JWT_SECRET=test-secret
+JWT_EXPIRES_IN=24h
+ENABLE_HETZNER=true
+HETZNER_ENDPOINT=https://fsn1.your-objectstorage.com
+HETZNER_BUCKET=your-bucket-name
+ENABLE_HLS=true
+FRONTEND_URL=http://localhost:3000
+API_URL=http://localhost:5001
+BASE_URL=http://localhost:5001
+DEFAULT_ADMIN_EMAIL=admin@test.com
+DEFAULT_ADMIN_PASSWORD=admin123
+EOF
+
+# 2. Frontend configuration  
+cd ../frontend
+cat > .env << 'EOF'
+REACT_APP_API_URL=http://localhost:5001
+EOF
+
+# 3. Test video in database
+mysql -u root -p your_database_name << 'EOF'
+INSERT INTO videos (title, description, subject_id, video_path, is_active, created_at, updated_at)
+VALUES ('Test Video', 'Test from Hetzner', 1, 'test/output.m3u8', true, NOW(), NOW());
+EOF
+
+# 4. Start services
+cd backend && npm run dev &
+cd frontend && npm start
+```
+
+Then open `http://localhost:3000` and play the video while watching the Network tab!
+
+## After Testing
+
+If you used the temporary test override in `hetznerService.ts`, remember to remove it before committing.
