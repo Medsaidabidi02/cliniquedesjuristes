@@ -438,17 +438,11 @@ router.delete('/:id', authenticateToken, async (req, res) => {
 
     await database.query('DELETE FROM blog_posts WHERE id = ?', [id]);
 
-    // Delete associated image
+    // Note: Image files must be deleted manually from storage if needed
+    console.log(`✅ Blog post ${id} (${post.title}) deleted from database`);
+    
     if (post.cover_image) {
-      const imagePath = path.join(__dirname, '..', '..', 'uploads', 'blog', path.basename(post.cover_image));
-      if (fs.existsSync(imagePath)) {
-        try { 
-          fs.unlinkSync(imagePath);
-          console.log(`🗑️ Deleted blog image: ${imagePath}`);
-        } catch (e) { 
-          console.warn('Could not delete blog image:', e); 
-        }
-      }
+      console.log(`⚠️ Note: Cover image must be deleted manually from storage: ${post.cover_image}`);
     }
 
     console.log(`✅ Blog post ${id} (${post.title}) deleted successfully`);
