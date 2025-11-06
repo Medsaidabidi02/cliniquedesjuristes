@@ -44,6 +44,11 @@ const VideoUploadForm: React.FC<VideoUploadFormProps> = ({ onSuccess, onCancel, 
   const [thumbnailPreview, setThumbnailPreview] = useState<string>('');
   const [dragActive, setDragActive] = useState(false);
   const [error, setError] = useState<string>('');
+  
+  // Phase 4: HLS video support
+  const [uploadMode, setUploadMode] = useState<'file' | 'hls'>('file');
+  const [hlsManifestPath, setHlsManifestPath] = useState<string>('');
+  const [storageType, setStorageType] = useState<'local' | 'hetzner'>('local');
 
   console.log(`🎬 VideoUploadForm loaded for Medsaidabidi02 at 2025-09-09 17:00:14`);
 
@@ -227,9 +232,22 @@ const VideoUploadForm: React.FC<VideoUploadFormProps> = ({ onSuccess, onCancel, 
       return false;
     }
 
-    if (!videoFile) {
-      setError('Le fichier vidéo est requis');
-      return false;
+    // Phase 4: Validate based on upload mode
+    if (uploadMode === 'file') {
+      if (!videoFile) {
+        setError('Le fichier vidéo est requis');
+        return false;
+      }
+    } else if (uploadMode === 'hls') {
+      if (!hlsManifestPath.trim()) {
+        setError('Le chemin du manifeste HLS (.m3u8) est requis');
+        return false;
+      }
+      // Validate HLS path format
+      if (!hlsManifestPath.endsWith('.m3u8')) {
+        setError('Le chemin doit pointer vers un fichier .m3u8 (manifeste HLS)');
+        return false;
+      }
     }
 
     if (!formData.subject_id) {
@@ -256,69 +274,106 @@ const VideoUploadForm: React.FC<VideoUploadFormProps> = ({ onSuccess, onCancel, 
       title: formData.title,
       subject: selectedSubject?.title,
       course: selectedCourseData?.title,
-      video_size: (videoFile!.size / (1024 * 1024 * 1024)).toFixed(2) + ' GB',
+      uploadMode: uploadMode,
+      video_size: videoFile ? (videoFile.size / (1024 * 1024 * 1024)).toFixed(2) + ' GB' : 'N/A',
+      hls_path: uploadMode === 'hls' ? hlsManifestPath : 'N/A',
+      storage_type: storageType,
       has_thumbnail: !!thumbnailFile,
       timestamp: '2025-09-09 17:00:14'
     });
 
     try {
-      // ✅ FIXED: Create FormData for multipart upload
-      const uploadFormData = new FormData();
-      uploadFormData.append('title', formData.title);
-      uploadFormData.append('description', formData.description);
-      uploadFormData.append('subject_id', formData.subject_id);
-      uploadFormData.append('is_active', formData.is_active.toString());
-      uploadFormData.append('video', videoFile!);
+      // Phase 4: Handle both file upload and HLS path entry
+      let result;
       
-      if (thumbnailFile) {
-        uploadFormData.append('thumbnail', thumbnailFile);
-      }
-
-      console.log('📤 Uploading to /api/videos with XMLHttpRequest for progress tracking...');
-
-      // ✅ Use XMLHttpRequest to track upload progress
-      const result = await new Promise<any>((resolve, reject) => {
-        const xhr = new XMLHttpRequest();
+      if (uploadMode === 'file') {
+        // Traditional file upload (MP4)
+        const uploadFormData = new FormData();
+        uploadFormData.append('title', formData.title);
+        uploadFormData.append('description', formData.description);
+        uploadFormData.append('subject_id', formData.subject_id);
+        uploadFormData.append('is_active', formData.is_active.toString());
+        uploadFormData.append('video', videoFile!);
         
-        // Track upload progress
-        xhr.upload.addEventListener('progress', (e) => {
-          if (e.lengthComputable) {
-            const percentComplete = Math.round((e.loaded / e.total) * 100);
-            setUploadProgress(percentComplete);
-            console.log(`📊 Upload progress: ${percentComplete}% (${(e.loaded / (1024 * 1024)).toFixed(2)}MB / ${(e.total / (1024 * 1024)).toFixed(2)}MB)`);
-          }
-        });
-        
-        // Handle completion
-        xhr.addEventListener('load', () => {
-          if (xhr.status >= 200 && xhr.status < 300) {
-            try {
-              const response = JSON.parse(xhr.responseText);
-              console.log('✅ Raw upload response:', response);
-              resolve(response);
-            } catch (e) {
-              reject(new Error('Invalid response format'));
+        if (thumbnailFile) {
+          uploadFormData.append('thumbnail', thumbnailFile);
+        }
+
+        console.log('📤 Uploading MP4 file to /api/videos with XMLHttpRequest...');
+
+        // Use XMLHttpRequest to track upload progress
+        result = await new Promise<any>((resolve, reject) => {
+          const xhr = new XMLHttpRequest();
+          
+          // Track upload progress
+          xhr.upload.addEventListener('progress', (e) => {
+            if (e.lengthComputable) {
+              const percentComplete = Math.round((e.loaded / e.total) * 100);
+              setUploadProgress(percentComplete);
+              console.log(`📊 Upload progress: ${percentComplete}% (${(e.loaded / (1024 * 1024)).toFixed(2)}MB / ${(e.total / (1024 * 1024)).toFixed(2)}MB)`);
             }
-          } else {
-            console.error('❌ Upload response error:', xhr.responseText);
-            reject(new Error(`Upload failed: ${xhr.status} ${xhr.statusText}`));
-          }
+          });
+          
+          // Handle completion
+          xhr.addEventListener('load', () => {
+            if (xhr.status >= 200 && xhr.status < 300) {
+              try {
+                const response = JSON.parse(xhr.responseText);
+                console.log('✅ Raw upload response:', response);
+                resolve(response);
+              } catch (e) {
+                reject(new Error('Invalid response format'));
+              }
+            } else {
+              console.error('❌ Upload response error:', xhr.responseText);
+              reject(new Error(`Upload failed: ${xhr.status} ${xhr.statusText}`));
+            }
+          });
+          
+          // Handle errors
+          xhr.addEventListener('error', () => {
+            reject(new Error('Network error during upload'));
+          });
+          
+          xhr.addEventListener('abort', () => {
+            reject(new Error('Upload cancelled'));
+          });
+          
+          // Send request
+          xhr.open('POST', '/api/videos');
+          xhr.setRequestHeader('Authorization', `Bearer ${localStorage.getItem('authToken') || ''}`);
+          xhr.send(uploadFormData);
         });
+      } else {
+        // Phase 4: HLS path entry (no file upload)
+        console.log('📤 Creating HLS video entry with manifest path...');
         
-        // Handle errors
-        xhr.addEventListener('error', () => {
-          reject(new Error('Network error during upload'));
-        });
+        const hlsData = {
+          title: formData.title,
+          description: formData.description,
+          subject_id: formData.subject_id,
+          is_active: formData.is_active,
+          video_path: hlsManifestPath,
+          storage_type: storageType,
+          is_segmented: true,
+          hls_manifest_path: hlsManifestPath
+        };
         
-        xhr.addEventListener('abort', () => {
-          reject(new Error('Upload cancelled'));
-        });
+        // If thumbnail is provided, upload it separately
+        if (thumbnailFile) {
+          const thumbnailFormData = new FormData();
+          Object.keys(hlsData).forEach(key => {
+            thumbnailFormData.append(key, (hlsData as any)[key].toString());
+          });
+          thumbnailFormData.append('thumbnail', thumbnailFile);
+          
+          result = await api.post('/api/videos', thumbnailFormData);
+        } else {
+          result = await api.post('/api/videos', hlsData);
+        }
         
-        // Send request
-        xhr.open('POST', '/api/videos');
-        xhr.setRequestHeader('Authorization', `Bearer ${localStorage.getItem('authToken') || ''}`);
-        xhr.send(uploadFormData);
-      });
+        setUploadProgress(100);
+      }
 
       // ✅ FIXED: Handle different response structures from MySQL5
       let actualVideo;
@@ -532,21 +587,127 @@ const VideoUploadForm: React.FC<VideoUploadFormProps> = ({ onSuccess, onCancel, 
 
               {/* Video File Upload */}
               <div className="bg-green-50 p-6 rounded-lg">
-                <h3 className="text-lg font-semibold text-green-900 mb-4">🎬 Fichier Vidéo</h3>
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-lg font-semibold text-green-900">🎬 Vidéo</h3>
+                  
+                  {/* Phase 4: Upload Mode Toggle */}
+                  <div className="flex items-center space-x-2 bg-white px-3 py-1.5 rounded-lg border border-green-200">
+                    <span className="text-sm font-medium text-gray-700">Mode:</span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setUploadMode('file');
+                        setHlsManifestPath('');
+                      }}
+                      className={`px-3 py-1 rounded text-sm transition-colors ${
+                        uploadMode === 'file'
+                          ? 'bg-green-600 text-white'
+                          : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                      }`}
+                      disabled={loading}
+                    >
+                      📁 Fichier MP4
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setUploadMode('hls');
+                        setVideoFile(null);
+                        setPreviewUrl('');
+                      }}
+                      className={`px-3 py-1 rounded text-sm transition-colors ${
+                        uploadMode === 'hls'
+                          ? 'bg-blue-600 text-white'
+                          : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                      }`}
+                      disabled={loading}
+                    >
+                      🎞️ HLS (.m3u8)
+                    </button>
+                  </div>
+                </div>
                 
-                <div
-                  className={`border-2 border-dashed rounded-lg p-8 text-center transition-colors ${
-                    dragActive 
-                      ? 'border-green-500 bg-green-50' 
-                      : loading 
-                      ? 'border-gray-200 bg-gray-50' 
-                      : 'border-gray-300 hover:border-green-400'
-                  }`}
-                  onDragEnter={handleDrag}
-                  onDragLeave={handleDrag}
-                  onDragOver={handleDrag}
-                  onDrop={handleDrop}
-                >
+                {/* Phase 4: HLS Path Input */}
+                {uploadMode === 'hls' ? (
+                  <div className="space-y-4">
+                    <div className="bg-blue-100 border border-blue-300 rounded-lg p-4">
+                      <div className="flex items-start space-x-2">
+                        <span className="text-blue-600 text-xl">ℹ️</span>
+                        <div className="flex-1">
+                          <h4 className="font-semibold text-blue-900 mb-1">Mode HLS (Streaming Segmenté)</h4>
+                          <p className="text-sm text-blue-800">
+                            Entrez le chemin du fichier manifeste HLS (.m3u8) qui a été préalablement uploadé sur Hetzner Object Storage.
+                            Les segments vidéo (.ts) doivent être dans le même dossier que le manifeste.
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                    
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Chemin du manifeste HLS (.m3u8) *
+                      </label>
+                      <input
+                        type="text"
+                        value={hlsManifestPath}
+                        onChange={(e) => {
+                          setHlsManifestPath(e.target.value);
+                          if (error) setError('');
+                        }}
+                        placeholder="Ex: hls/course-1/subject-5/video-123/playlist.m3u8"
+                        className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 font-mono text-sm"
+                        required
+                        disabled={loading}
+                      />
+                      <p className="text-xs text-gray-500 mt-1">
+                        Format: <code className="bg-gray-100 px-1 py-0.5 rounded">hls/course-{'{id}'}/subject-{'{id}'}/video-{'{id}'}/playlist.m3u8</code>
+                      </p>
+                    </div>
+                    
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Type de stockage
+                      </label>
+                      <select
+                        value={storageType}
+                        onChange={(e) => setStorageType(e.target.value as 'local' | 'hetzner')}
+                        className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                        disabled={loading}
+                      >
+                        <option value="local">📁 Local (Serveur)</option>
+                        <option value="hetzner">☁️ Hetzner Object Storage</option>
+                      </select>
+                      <p className="text-xs text-gray-500 mt-1">
+                        Sélectionnez où les fichiers HLS sont stockés
+                      </p>
+                    </div>
+                    
+                    {hlsManifestPath && (
+                      <div className="bg-white border border-green-200 rounded-lg p-4">
+                        <h4 className="font-semibold text-green-900 mb-2">✅ Aperçu</h4>
+                        <div className="space-y-1 text-sm">
+                          <div><span className="font-medium">Manifeste:</span> <code className="bg-gray-100 px-1 py-0.5 rounded text-xs">{hlsManifestPath}</code></div>
+                          <div><span className="font-medium">Type:</span> {hlsManifestPath.endsWith('.m3u8') ? '✅ HLS Valide' : '❌ Doit finir par .m3u8'}</div>
+                          <div><span className="font-medium">Stockage:</span> {storageType === 'hetzner' ? '☁️ Hetzner' : '📁 Local'}</div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  // Original file upload UI
+                  <div
+                    className={`border-2 border-dashed rounded-lg p-8 text-center transition-colors ${
+                      dragActive 
+                        ? 'border-green-500 bg-green-50' 
+                        : loading 
+                        ? 'border-gray-200 bg-gray-50' 
+                        : 'border-gray-300 hover:border-green-400'
+                    }`}
+                    onDragEnter={handleDrag}
+                    onDragLeave={handleDrag}
+                    onDragOver={handleDrag}
+                    onDrop={handleDrop}
+                  >
                   {videoFile ? (
                     <div className="space-y-4">
                       <div className="text-green-600">
