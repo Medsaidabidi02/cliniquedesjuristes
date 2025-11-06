@@ -1,5 +1,8 @@
 import { Router } from 'express';
 import { upload } from '../services/fileUpload';
+import { generateSignedUrl, generateVideoSignedUrl } from '../services/signedUrl';
+import { getVideoStorageProvider } from '../services/storageFactory';
+import { videoConfig } from '../config/video';
 
 import path from 'path';
 import fs from 'fs';
@@ -95,6 +98,85 @@ router.get('/admin/stats', async (req, res) => {
   }
 });
 
+// GET video playback info with signed URL (for HLS or cloud storage)
+router.get('/:id/playback-info', async (req, res) => {
+  try {
+    const { id } = req.params;
+    console.log(`🎬 GET /api/videos/${id}/playback-info - Generating signed URL`);
+    
+    const result = await database.query(`
+      SELECT 
+        v.*,
+        v.video_path,
+        v.file_path,
+        v.storage_type,
+        v.hls_manifest_path,
+        v.is_segmented,
+        s.title as subject_title,
+        c.id as course_id
+      FROM videos v
+      LEFT JOIN subjects s ON v.subject_id = s.id
+      LEFT JOIN courses c ON s.course_id = c.id
+      WHERE v.id = ?
+    `, [id]);
+    
+    if (result.rows.length === 0) {
+      return res.status(404).json({ message: 'Video not found' });
+    }
+    
+    const video = result.rows[0];
+    const config = videoConfig();
+    
+    // Determine video path (HLS manifest or regular video)
+    const videoPath = video.is_segmented && video.hls_manifest_path 
+      ? video.hls_manifest_path 
+      : (video.video_path || video.file_path);
+    
+    // Check storage type
+    const storageType = video.storage_type || 'local';
+    const isHLS = video.is_segmented || videoPath.endsWith('.m3u8') || videoPath.includes('/hls/');
+    
+    let url = '';
+    let expiresAt = null;
+    let expiresIn = config.urlExpiration;
+    
+    if (storageType === 'hetzner' && process.env.ENABLE_HETZNER === 'true') {
+      // Generate signed URL for Hetzner storage
+      try {
+        const signedUrlResult = await generateSignedUrl(
+          videoPath,
+          'hetzner',
+          config.urlExpiration
+        );
+        url = signedUrlResult.url;
+        expiresAt = signedUrlResult.expiresAt;
+        console.log(`✅ Generated signed URL for video ${id} (Hetzner)`);
+      } catch (error) {
+        console.error(`❌ Failed to generate signed URL:`, error);
+        return res.status(500).json({ message: 'Failed to generate video URL' });
+      }
+    } else {
+      // Local storage - use streaming endpoint
+      url = `/api/videos/stream/${videoPath}`;
+      console.log(`✅ Generated local stream URL for video ${id}`);
+    }
+    
+    res.json({
+      url,
+      expiresAt,
+      expiresIn,
+      storageType,
+      isHLS,
+      videoPath,
+      contentType: isHLS ? 'application/vnd.apple.mpegurl' : 'video/mp4'
+    });
+    
+  } catch (error) {
+    console.error(`❌ Error getting playback info:`, error);
+    res.status(500).json({ message: 'Error getting video playback info' });
+  }
+});
+
 // GET single video
 router.get('/:id', async (req, res) => {
   try {
@@ -135,18 +217,31 @@ router.get('/:id', async (req, res) => {
 });
 
 // ✅ ULTRA-FIXED: POST upload new video with bulletproof MySQL5 response handling
+// Supports both file upload and HLS path entry
 router.post('/', simpleAuth, upload.fields([
   { name: 'video', maxCount: 1 },
   { name: 'thumbnail', maxCount: 1 }
 ]), async (req, res) => {
   try {
-    const { title, description, subject_id, is_active } = req.body;
+    const { 
+      title, 
+      description, 
+      subject_id, 
+      is_active,
+      video_path,       // For HLS mode - direct path entry
+      storage_type,     // 'local' or 'hetzner'
+      is_segmented,     // true for HLS videos
+      hls_manifest_path // Path to .m3u8 file
+    } = req.body;
     const files = req.files as { [fieldname: string]: Express.Multer.File[] };
     
     console.log('📤 POST /api/videos - Upload for Medsaidabidi02 at 2025-09-09 17:15:30');
     console.log('📝 Data:', { 
       title, 
-      subject_id, 
+      subject_id,
+      video_path,
+      storage_type,
+      is_segmented,
       files: files ? Object.keys(files) : 'no files',
       user: req.user?.name 
     });
@@ -160,11 +255,23 @@ router.post('/', simpleAuth, upload.fields([
       });
     }
     
-    if (!files?.video?.[0]) {
+    // Check if this is HLS path entry mode (no file upload)
+    const isHLSMode = video_path && !files?.video?.[0];
+    
+    if (!isHLSMode && !files?.video?.[0]) {
       return res.status(400).json({ 
         success: false,
-        message: 'Video file is required',
+        message: 'Video file or video_path is required',
         files_received: files ? Object.keys(files) : 'none'
+      });
+    }
+    
+    // Validate HLS path format if provided
+    if (isHLSMode && !video_path.endsWith('.m3u8')) {
+      return res.status(400).json({
+        success: false,
+        message: 'HLS manifest path must end with .m3u8',
+        received_path: video_path
       });
     }
     
@@ -182,21 +289,41 @@ router.post('/', simpleAuth, upload.fields([
       });
     }
     
-    const videoFile = files.video[0];
-    const thumbnailFile = files.thumbnail?.[0];
+    let videoFile = null;
+    let thumbnailFile = null;
+    let finalVideoPath = '';
+    let finalStorageType = storage_type || 'local';
+    let finalIsSegmented = is_segmented === 'true' || is_segmented === true;
+    let finalHLSManifestPath = hls_manifest_path || null;
+    let finalFileSize = 0;
     
-    console.log('📁 Files for Medsaidabidi02:', {
-      video: {
-        filename: videoFile.filename,
-        size: (videoFile.size / (1024 * 1024)).toFixed(2) + ' MB',
-        mimetype: videoFile.mimetype
-      },
-      thumbnail: thumbnailFile ? {
-        filename: thumbnailFile.filename,
-        size: (thumbnailFile.size / 1024).toFixed(2) + ' KB',
-        mimetype: thumbnailFile.mimetype
-      } : 'none'
-    });
+    if (isHLSMode) {
+      // HLS mode - use provided path
+      console.log('🎞️ HLS mode detected - using provided manifest path');
+      finalVideoPath = video_path;
+      finalIsSegmented = true;
+      finalHLSManifestPath = video_path;
+      thumbnailFile = files?.thumbnail?.[0];
+    } else {
+      // Traditional file upload mode
+      videoFile = files.video[0];
+      thumbnailFile = files?.thumbnail?.[0];
+      finalVideoPath = videoFile.filename;
+      finalFileSize = videoFile.size;
+      
+      console.log('📁 Files for Medsaidabidi02:', {
+        video: {
+          filename: videoFile.filename,
+          size: (videoFile.size / (1024 * 1024)).toFixed(2) + ' MB',
+          mimetype: videoFile.mimetype
+        },
+        thumbnail: thumbnailFile ? {
+          filename: thumbnailFile.filename,
+          size: (thumbnailFile.size / 1024).toFixed(2) + ' KB',
+          mimetype: thumbnailFile.mimetype
+        } : 'none'
+      });
+    }
     
     // Get next order_index for this subject
     const orderResult = await database.query(
@@ -216,21 +343,26 @@ router.post('/', simpleAuth, upload.fields([
       const insertResult = await database.query(`
         INSERT INTO videos (
           title, description, subject_id, video_path, file_path, thumbnail_path, 
-          file_size, duration, order_index, is_active, mime_type
+          file_size, duration, order_index, is_active, mime_type,
+          storage_type, is_segmented, hls_manifest_path, segment_duration
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `, [
         title.trim(),
         description?.trim() || '',
         parseInt(subject_id),
-        videoFile.filename, // video_path
-        videoFile.filename, // file_path (same value for compatibility)
+        finalVideoPath,                              // video_path
+        finalVideoPath,                              // file_path (same for compatibility)
         thumbnailFile?.filename || null,
-        videoFile.size,
-        0, // Duration will need to be calculated separately
+        finalFileSize,
+        0,                                           // Duration
         orderIndex,
         is_active !== 'false',
-        videoFile.mimetype
+        videoFile?.mimetype || 'application/vnd.apple.mpegurl',
+        finalStorageType,                            // storage_type
+        finalIsSegmented,                            // is_segmented
+        finalHLSManifestPath,                        // hls_manifest_path
+        10                                           // segment_duration (default 10s)
       ]);
       
       console.log('✅ Insert result structure for Medsaidabidi02:', {
@@ -276,7 +408,7 @@ router.post('/', simpleAuth, upload.fields([
           WHERE video_path = ? AND title = ? AND subject_id = ? 
           ORDER BY created_at DESC 
           LIMIT 1
-        `, [videoFile.filename, title.trim(), parseInt(subject_id)]);
+        `, [finalVideoPath, title.trim(), parseInt(subject_id)]);
         
         if (searchResult.rows && searchResult.rows.length > 0) {
           videoId = searchResult.rows[0].id;
@@ -425,6 +557,82 @@ router.delete('/:id', simpleAuth, async (req, res) => {
   } catch (error) {
     console.error(`❌ Delete error for Medsaidabidi02:`, error);
     res.status(500).json({ message: 'Failed to delete video' });
+  }
+});
+
+// POST token refresh - Regenerate signed URL for video
+router.post('/token/refresh', async (req, res) => {
+  try {
+    const { videoId } = req.body;
+    console.log(`🔄 POST /api/videos/token/refresh - Refreshing URL for video ${videoId}`);
+    
+    if (!videoId) {
+      return res.status(400).json({ message: 'videoId is required' });
+    }
+    
+    const result = await database.query(`
+      SELECT 
+        v.id,
+        v.video_path,
+        v.file_path,
+        v.storage_type,
+        v.hls_manifest_path,
+        v.is_segmented
+      FROM videos v
+      WHERE v.id = ? AND v.is_active = true
+    `, [videoId]);
+    
+    if (result.rows.length === 0) {
+      return res.status(404).json({ message: 'Video not found' });
+    }
+    
+    const video = result.rows[0];
+    const config = videoConfig();
+    
+    // Determine video path
+    const videoPath = video.is_segmented && video.hls_manifest_path 
+      ? video.hls_manifest_path 
+      : (video.video_path || video.file_path);
+    
+    const storageType = video.storage_type || 'local';
+    
+    if (storageType === 'hetzner' && process.env.ENABLE_HETZNER === 'true') {
+      // Generate new signed URL
+      try {
+        const signedUrlResult = await generateSignedUrl(
+          videoPath,
+          'hetzner',
+          config.urlExpiration
+        );
+        
+        console.log(`✅ Refreshed signed URL for video ${videoId}`);
+        
+        res.json({
+          url: signedUrlResult.url,
+          expiresAt: signedUrlResult.expiresAt,
+          expiresIn: config.urlExpiration,
+          storageType: 'hetzner'
+        });
+      } catch (error) {
+        console.error(`❌ Failed to refresh signed URL:`, error);
+        return res.status(500).json({ message: 'Failed to refresh video URL' });
+      }
+    } else {
+      // Local storage - return streaming URL (doesn't expire)
+      const url = `/api/videos/stream/${videoPath}`;
+      console.log(`✅ Refreshed local stream URL for video ${videoId}`);
+      
+      res.json({
+        url,
+        expiresAt: null,
+        expiresIn: null,
+        storageType: 'local'
+      });
+    }
+    
+  } catch (error) {
+    console.error(`❌ Error refreshing token:`, error);
+    res.status(500).json({ message: 'Error refreshing video token' });
   }
 });
 
