@@ -1,7 +1,5 @@
 import express from 'express';
 import { AuthRequest, requireAdmin } from '../middleware/auth';
-import { upload, uploadVideo, uploadImage } from '../services/fileUpload';
-import { generateVideoKey } from '../services/videoSecurity';
 import bcrypt from 'bcrypt';
 import database from '../config/database';
 
@@ -14,13 +12,13 @@ router.use(requireAdmin);
 
 // ===== COURSE MANAGEMENT =====
 
-// Create new course
-router.post('/courses', upload.single('cover_image'), async (req: AuthRequest, res) => {
+// Create new course (no file upload)
+router.post('/courses', async (req: AuthRequest, res) => {
   try {
-    const { title, description, excerpt, category_id, level } = req.body;
+    const { title, description, excerpt, category_id, level, cover_image } = req.body;
     const adminId = req.user!.id;
 
-    console.log('📚 Creating course for Medsaidabidi02:', title);
+    console.log('📚 Creating course:', title);
 
     // Validate required fields
     if (!title) {
@@ -42,11 +40,8 @@ router.post('/courses', upload.single('cover_image'), async (req: AuthRequest, r
       slug = `${baseSlug}-${counter++}`;
     }
 
-    let coverImageUrl = null;
-    if (req.file) {
-      coverImageUrl = await uploadImage(req.file);
-      console.log('🖼️ Cover image uploaded for Medsaidabidi02:', coverImageUrl);
-    }
+    // cover_image should be a URL provided by client
+    const coverImageUrl = cover_image || null;
 
     const result = await database.query(`
       INSERT INTO courses (title, slug, description, excerpt, cover_image, category, thumbnail_path, is_active)
@@ -56,10 +51,10 @@ router.post('/courses', upload.single('cover_image'), async (req: AuthRequest, r
     // Get the created course
     const createdCourse = await database.query('SELECT * FROM courses WHERE id = ?', [result.insertId]);
 
-    console.log('✅ Course created for Medsaidabidi02:', createdCourse.rows[0].id);
+    console.log('✅ Course created:', createdCourse.rows[0].id);
     res.status(201).json(createdCourse.rows[0]);
   } catch (error) {
-    console.error('❌ Create course error for Medsaidabidi02:', error);
+    console.error('❌ Create course error:', error);
     res.status(500).json({ error: 'Failed to create course' });
   }
 });
@@ -90,13 +85,13 @@ router.get('/courses', async (req: AuthRequest, res) => {
   }
 });
 
-// Update course
-router.put('/courses/:id', upload.single('cover_image'), async (req: AuthRequest, res) => {
+// Update course (no file upload)
+router.put('/courses/:id', async (req: AuthRequest, res) => {
   try {
     const { id } = req.params;
-    const { title, description, excerpt, category, is_active } = req.body;
+    const { title, description, excerpt, category, is_active, cover_image } = req.body;
 
-    console.log(`🔄 Updating course ${id} for Medsaidabidi02 at 2025-09-09 15:18:39`);
+    console.log(`🔄 Updating course ${id}`);
 
     // Check if course exists
     const courseCheck = await database.query('SELECT id FROM courses WHERE id = ?', [id]);
@@ -141,12 +136,10 @@ router.put('/courses/:id', upload.single('cover_image'), async (req: AuthRequest
       values.push(is_active);
     }
 
-    // Handle cover image
-    if (req.file) {
-      const coverImageUrl = await uploadImage(req.file);
+    // Handle cover image URL from client
+    if (cover_image !== undefined) {
       updateFields.push('cover_image = ?', 'thumbnail_path = ?');
-      values.push(coverImageUrl, coverImageUrl);
-      console.log('🖼️ New cover image uploaded for Medsaidabidi02:', coverImageUrl);
+      values.push(cover_image, cover_image);
     }
 
     if (updateFields.length === 0) {
@@ -161,10 +154,10 @@ router.put('/courses/:id', upload.single('cover_image'), async (req: AuthRequest
     // Get updated course
     const updatedCourse = await database.query('SELECT * FROM courses WHERE id = ?', [id]);
 
-    console.log(`✅ Course ${id} updated for Medsaidabidi02`);
+    console.log(`✅ Course ${id} updated`);
     res.json(updatedCourse.rows[0]);
   } catch (error) {
-    console.error(`❌ Update course error for Medsaidabidi02:`, error);
+    console.error(`❌ Update course error:`, error);
     res.status(500).json({ error: 'Failed to update course' });
   }
 });
@@ -214,69 +207,17 @@ router.post('/subjects', async (req: AuthRequest, res) => {
 // ===== VIDEO MANAGEMENT =====
 
 // Upload video to subject
-router.post('/videos', upload.single('video'), async (req: AuthRequest, res) => {
-  try {
-    const { subject_id, title, description, order_index, is_free } = req.body;
-
-    console.log('🎥 Uploading video for Medsaidabidi02:', title);
-
-    if (!req.file) {
-      return res.status(400).json({ error: 'Video file is required' });
-    }
-
-    if (!subject_id || !title) {
-      return res.status(400).json({ error: 'Subject ID and title are required' });
-    }
-
-    // Check if subject exists
-    const subjectCheck = await database.query('SELECT id FROM subjects WHERE id = ?', [subject_id]);
-    if (subjectCheck.rows.length === 0) {
-      return res.status(404).json({ error: 'Subject not found' });
-    }
-
-    console.log('📁 Video file details for Medsaidabidi02:', {
-      originalname: req.file.originalname,
-      mimetype: req.file.mimetype,
-      size: req.file.size,
-      filename: req.file.filename
-    });
-
-    // Get next order index if not provided
-    let finalOrderIndex = order_index;
-    if (!finalOrderIndex) {
-      const maxOrder = await database.query('SELECT COALESCE(MAX(order_index), 0) + 1 as next_order FROM videos WHERE subject_id = ?', [subject_id]);
-      finalOrderIndex = maxOrder.rows[0].next_order;
-    }
-
-    // Generate video key for security
-    const videoKey = generateVideoKey();
-    const videoPath = req.file.filename; // Use the uploaded filename
-
-    const result = await database.query(`
-      INSERT INTO videos (subject_id, title, description, video_path, file_path, file_size, mime_type, order_index, is_active)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `, [subject_id, title, description || '', videoPath, videoPath, req.file.size, req.file.mimetype, finalOrderIndex, true]);
-
-    // Get the created video
-    const createdVideo = await database.query('SELECT * FROM videos WHERE id = ?', [result.insertId]);
-
-    console.log('✅ Video uploaded for Medsaidabidi02:', createdVideo.rows[0].id);
-    res.status(201).json(createdVideo.rows[0]);
-  } catch (error) {
-    console.error('❌ Upload video error for Medsaidabidi02:', error);
-    res.status(500).json({ error: 'Failed to upload video' });
-  }
-});
 
 // ===== BLOG MANAGEMENT =====
 
 // Create new blog post
-router.post('/blog', upload.single('cover_image'), async (req: AuthRequest, res) => {
+// Create new blog post (no file upload)
+router.post('/blog', async (req: AuthRequest, res) => {
   try {
-    const { title, content, excerpt, is_featured } = req.body;
+    const { title, content, excerpt, is_featured, cover_image } = req.body;
     const adminId = req.user!.id;
 
-    console.log('📝 Creating blog post for Medsaidabidi02:', title);
+    console.log('📝 Creating blog post:', title);
 
     if (!title || !content) {
       return res.status(400).json({ error: 'Title and content are required' });
@@ -297,11 +238,8 @@ router.post('/blog', upload.single('cover_image'), async (req: AuthRequest, res)
       slug = `${baseSlug}-${counter++}`;
     }
 
-    let coverImageUrl = null;
-    if (req.file) {
-      coverImageUrl = await uploadImage(req.file);
-      console.log('🖼️ Blog cover image uploaded for Medsaidabidi02:', coverImageUrl);
-    }
+    // cover_image should be a URL provided by client
+    const coverImageUrl = cover_image || null;
 
     const result = await database.query(`
       INSERT INTO blog_posts (title, slug, content, excerpt, cover_image, author_id, published, created_at)
@@ -311,10 +249,10 @@ router.post('/blog', upload.single('cover_image'), async (req: AuthRequest, res)
     // Get the created blog post
     const createdPost = await database.query('SELECT * FROM blog_posts WHERE id = ?', [result.insertId]);
 
-    console.log('✅ Blog post created for Medsaidabidi02:', createdPost.rows[0].id);
+    console.log('✅ Blog post created:', createdPost.rows[0].id);
     res.status(201).json(createdPost.rows[0]);
   } catch (error) {
-    console.error('❌ Create blog post error for Medsaidabidi02:', error);
+    console.error('❌ Create blog post error:', error);
     res.status(500).json({ error: 'Failed to create blog post' });
   }
 });
@@ -403,29 +341,6 @@ router.get('/dashboard/stats', async (req: AuthRequest, res) => {
 // ===== FILE MANAGEMENT =====
 
 // Upload general file
-router.post('/upload', upload.single('file'), async (req: AuthRequest, res) => {
-  try {
-    console.log('📤 File upload for admin Medsaidabidi02 at 2025-09-09 15:18:39');
-
-    if (!req.file) {
-      return res.status(400).json({ error: 'No file provided' });
-    }
-
-    const fileUrl = `/uploads/${req.file.filename}`;
-    console.log('✅ File uploaded for Medsaidabidi02:', fileUrl);
-
-    res.json({
-      success: true,
-      fileUrl,
-      filename: req.file.filename,
-      originalName: req.file.originalname,
-      size: req.file.size
-    });
-  } catch (error) {
-    console.error('❌ File upload error for Medsaidabidi02:', error);
-    res.status(500).json({ error: 'Failed to upload file' });
-  }
-});
 
 console.log('👑 Admin routes module loaded for Medsaidabidi02 at 2025-09-09 15:18:39');
 

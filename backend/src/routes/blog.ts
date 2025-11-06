@@ -1,10 +1,7 @@
 import express from 'express';
 import { AuthRequest, authenticateToken, optionalAuth, requireAdmin } from '../middleware/auth';
-import path from 'path';
-import fs from 'fs';
 import jwt from 'jsonwebtoken';
 import database from '../config/database';
-import { upload } from '../services/fileUpload';
 
 const router = express.Router();
 const JWT_SECRET = process.env.JWT_SECRET || 'legal-education-platform-super-secret-key-medsaidabidi02-2025-mysql5-version';
@@ -230,23 +227,6 @@ router.get('/admin/stats', authenticateToken, requireAdmin, async (req, res) => 
 });
 
 // POST /api/blog/upload-image - Upload image for blog content
-router.post('/upload-image', authenticateToken, upload.single('image'), async (req, res) => {
-  try {
-    console.log('📤 POST /api/blog/upload-image - Uploading image at 2025-09-09 15:15:29');
-    
-    if (!req.file) {
-      return res.status(400).json({ success: false, error: 'No image file provided' });
-    }
-    
-    const baseUrl = process.env.BASE_URL || process.env.API_URL || 'http://localhost:5001';
-    const imageUrl = `${baseUrl}/uploads/blog/${req.file.filename}`;
-    console.log(`✅ Blog image uploaded successfully: ${imageUrl}`);
-    res.json({ success: true, imageUrl, data: { imageUrl } });
-  } catch (error) {
-    console.error('❌ Error uploading blog image:', error);
-    res.status(500).json({ success: false, error: 'Error uploading image' });
-  }
-});
 
 // GET /api/blog/:id - Get single blog post
 router.get('/:id', optionalAuth, async (req: AuthRequest, res) => {
@@ -288,15 +268,16 @@ router.get('/:id', optionalAuth, async (req: AuthRequest, res) => {
 });
 
 // POST /api/blog - Create new blog post
-router.post('/', authenticateToken, upload.single('cover_image'), async (req, res) => {
+// POST /api/blog - Create new blog post (no file upload)
+router.post('/', authenticateToken, async (req, res) => {
   try {
-    console.log('➕ POST /api/blog - Creating new post for Medsaidabidi02 at 2025-09-09 15:15:29');
+    console.log('➕ POST /api/blog - Creating new post');
     
-    const { title, content, excerpt } = req.body;
+    const { title, content, excerpt, cover_image } = req.body;
     let published = req.body?.published === 'true' || req.body?.published === true ? true : false;
     const author_id = (req as any).user.id;
 
-    console.log('📝 Blog post data for Medsaidabidi02:', { title, published, author_id });
+    console.log('📝 Blog post data:', { title, published, author_id });
 
     if (!title || !content) {
       return res.status(400).json({ success: false, error: 'Title and content are required' });
@@ -312,23 +293,18 @@ router.post('/', authenticateToken, upload.single('cover_image'), async (req, re
       slug = `${baseSlug}-${counter++}`;
     }
 
-    // Handle cover image
-    let cover_image = null;
-    if (req.file) {
-      const baseUrl = process.env.BASE_URL || process.env.API_URL || 'http://localhost:5001';
-      cover_image = `${baseUrl}/uploads/blog/${req.file.filename}`;
-      console.log(`📸 Blog cover image uploaded for Medsaidabidi02: ${cover_image}`);
-    }
+    // cover_image should be a URL provided by client
+    const coverImageUrl = cover_image || null;
 
     const result = await database.query(`
       INSERT INTO blog_posts (title, slug, content, excerpt, cover_image, published, author_id, created_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, NOW())
-    `, [title, slug, content, excerpt, cover_image, published, author_id]);
+    `, [title, slug, content, excerpt, coverImageUrl, published, author_id]);
 
     // Get the created post
     const createdPost = await database.query('SELECT * FROM blog_posts WHERE id = ?', [result.insertId]);
 
-    console.log('✅ Blog post created successfully for Medsaidabidi02:', createdPost.rows[0]);
+    console.log('✅ Blog post created successfully:', createdPost.rows[0]);
     res.status(201).json({
       success: true,
       message: 'Blog post created successfully',
@@ -336,16 +312,17 @@ router.post('/', authenticateToken, upload.single('cover_image'), async (req, re
       data: createdPost.rows[0]
     });
   } catch (error: any) {
-    console.error('❌ Error creating blog post for Medsaidabidi02:', error);
+    console.error('❌ Error creating blog post:', error);
     res.status(500).json({ success: false, error: 'Error creating blog post', details: error.message });
   }
 });
 
 // PUT /api/blog/:id - Update blog post
-router.put('/:id', authenticateToken, upload.single('cover_image'), async (req, res) => {
+// PUT /api/blog/:id - Update blog post (no file upload)
+router.put('/:id', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
-    console.log(`🔄 PUT /api/blog/${id} - Updating post for Medsaidabidi02 at 2025-09-09 15:15:29`);
+    console.log(`🔄 PUT /api/blog/${id} - Updating post`);
     
     const user = (req as any).user;
 
@@ -363,7 +340,7 @@ router.put('/:id', authenticateToken, upload.single('cover_image'), async (req, 
       return res.status(403).json({ success: false, error: 'Not authorized to edit this post' });
     }
 
-    const { title, content, excerpt } = req.body;
+    const { title, content, excerpt, cover_image } = req.body;
     let published = undefined;
     if (typeof req.body.published !== 'undefined') {
       published = req.body.published === 'true' || req.body.published === true;
@@ -406,25 +383,10 @@ router.put('/:id', authenticateToken, upload.single('cover_image'), async (req, 
       params.push(published);
     }
 
-    // Handle cover image
-    if (req.file) {
-      const baseUrl = process.env.BASE_URL || process.env.API_URL || 'http://localhost:5001';
-      const newCoverImage = `${baseUrl}/uploads/blog/${req.file.filename}`;
+    // Handle cover image URL from client
+    if (typeof cover_image !== 'undefined') {
       updateFields.push('cover_image = ?');
-      params.push(newCoverImage);
-
-      // Delete old image file if present
-      if (post.cover_image) {
-        const oldImagePath = path.join(__dirname, '..', '..', 'uploads', 'blog', path.basename(post.cover_image));
-        if (fs.existsSync(oldImagePath)) {
-          try { 
-            fs.unlinkSync(oldImagePath);
-            console.log(`🗑️ Deleted old blog image for Medsaidabidi02: ${oldImagePath}`);
-          } catch (e) { 
-            console.warn('Could not delete old image for Medsaidabidi02:', e); 
-          }
-        }
-      }
+      params.push(cover_image);
     }
 
     if (updateFields.length === 0) {

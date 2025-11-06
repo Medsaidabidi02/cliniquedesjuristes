@@ -11,8 +11,7 @@
       "dev": "ts-node-dev --respawn --transpile-only src/server.ts",
       "dev:simple": "ts-node src/server.ts",
       "build": "tsc",
-      "build:prod": "npm run build && copyfiles \"uploads/**/*\" dist && copyfiles \".env.production\" dist",
-      "postbuild": "copyfiles \"uploads/**/*\" dist"
+      "build:prod": "npm run build"
     },
   
   "engines": {
