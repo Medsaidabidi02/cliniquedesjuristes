@@ -556,6 +556,42 @@ export class VideoService {
     
     return { valid: isValid, errors };
   }
+
+  // Get video playback info with signed URL (for HLS/cloud storage)
+  async getVideoPlaybackInfo(videoId: number): Promise<VideoPlaybackInfo> {
+    try {
+      console.log(`🎬 Getting playback info for video ${videoId}...`);
+      
+      const response = await api.get<VideoPlaybackInfo>(`/api/videos/${videoId}/playback-info`);
+      
+      console.log(`✅ Playback info retrieved:`, {
+        storageType: response.storageType,
+        isHLS: response.isHLS,
+        hasExpiration: !!response.expiresAt
+      });
+      
+      return response;
+    } catch (error) {
+      console.error(`❌ Error getting playback info for video ${videoId}:`, error);
+      throw error;
+    }
+  }
+
+  // Refresh video token (for signed URLs)
+  async refreshVideoToken(videoId: number): Promise<VideoPlaybackInfo> {
+    try {
+      console.log(`🔄 Refreshing token for video ${videoId}...`);
+      
+      const response = await api.post<VideoPlaybackInfo>('/api/videos/token/refresh', { videoId });
+      
+      console.log(`✅ Token refreshed for video ${videoId}`);
+      
+      return response;
+    } catch (error) {
+      console.error(`❌ Error refreshing token for video ${videoId}:`, error);
+      throw error;
+    }
+  }
 }
 
 // Export singleton instance
@@ -663,42 +699,6 @@ export const videoUtils = {
         reject(error);
       }
     });
-  }
-
-  // Get video playback info with signed URL (for HLS/cloud storage)
-  async getVideoPlaybackInfo(videoId: number): Promise<VideoPlaybackInfo> {
-    try {
-      console.log(`🎬 Getting playback info for video ${videoId}...`);
-      
-      const response = await api.get<VideoPlaybackInfo>(`/api/videos/${videoId}/playback-info`);
-      
-      console.log(`✅ Playback info retrieved:`, {
-        storageType: response.storageType,
-        isHLS: response.isHLS,
-        hasExpiration: !!response.expiresAt
-      });
-      
-      return response;
-    } catch (error) {
-      console.error(`❌ Error getting playback info for video ${videoId}:`, error);
-      throw error;
-    }
-  }
-
-  // Refresh video token (for signed URLs)
-  async refreshVideoToken(videoId: number): Promise<VideoPlaybackInfo> {
-    try {
-      console.log(`🔄 Refreshing token for video ${videoId}...`);
-      
-      const response = await api.post<VideoPlaybackInfo>('/api/videos/token/refresh', { videoId });
-      
-      console.log(`✅ Token refreshed for video ${videoId}`);
-      
-      return response;
-    } catch (error) {
-      console.error(`❌ Error refreshing token for video ${videoId}:`, error);
-      throw error;
-    }
   }
 };
 
