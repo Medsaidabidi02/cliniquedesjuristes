@@ -557,7 +557,11 @@ export class VideoService {
     return { valid: isValid, errors };
   }
 
-  // Get video playback info with signed URL (for HLS/cloud storage)
+  /**
+   * Get video playback info with signed URL (for HLS/cloud storage)
+   * @param videoId - The ID of the video
+   * @returns Promise with video playback information including signed URL
+   */
   async getVideoPlaybackInfo(videoId: number): Promise<VideoPlaybackInfo> {
     try {
       console.log(`🎬 Getting playback info for video ${videoId}...`);
@@ -577,7 +581,11 @@ export class VideoService {
     }
   }
 
-  // Refresh video token (for signed URLs)
+  /**
+   * Refresh video token (for signed URLs)
+   * @param videoId - The ID of the video
+   * @returns Promise with refreshed video playback information
+   */
   async refreshVideoToken(videoId: number): Promise<VideoPlaybackInfo> {
     try {
       console.log(`🔄 Refreshing token for video ${videoId}...`);
