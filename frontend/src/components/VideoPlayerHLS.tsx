@@ -11,7 +11,15 @@ interface VideoPlayerProps {
   autoPlay?: boolean;
 }
 
-const VideoPlayer: React.FC<VideoPlayerProps> = ({
+interface PlaybackInfo {
+  url: string;
+  expiresAt: string;
+  expiresIn: number;
+  storageType?: string;
+  isHLS?: boolean;
+}
+
+const VideoPlayerHLS: React.FC<VideoPlayerProps> = ({
   video,
   isAuthenticated,
   onTimeUpdate,
@@ -26,20 +34,138 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
   const [error, setError] = useState<string>('');
   const [hasPlayed, setHasPlayed] = useState(false);
   const [isPreviewMode, setIsPreviewMode] = useState(!isAuthenticated);
+  const [playbackInfo, setPlaybackInfo] = useState<PlaybackInfo | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [urlExpiresAt, setUrlExpiresAt] = useState<Date | null>(null);
 
   /**
-   * Check if video is HLS based on file extension
+   * Determine if video is HLS based on path or extension
    */
   const isHLSVideo = useCallback((videoPath: string): boolean => {
     if (!videoPath) return false;
-    const lowerPath = videoPath.toLowerCase();
-    return lowerPath.endsWith('.m3u8') || lowerPath.includes('/hls/');
+    return videoPath.endsWith('.m3u8') || videoPath.includes('/hls/');
   }, []);
 
   /**
-   * Initialize video player with HLS support or native playback
+   * Fetch playback info from backend (URL + expiration)
+   */
+  const fetchPlaybackInfo = useCallback(async (): Promise<PlaybackInfo | null> => {
+    try {
+      console.log('🎬 Fetching playback info for video:', video.id);
+      
+      // Check if this is an HLS video
+      const isHLS = isHLSVideo(video.video_path);
+      
+      // For now, use existing URL building logic
+      // In future: call backend endpoint /api/videos/:id/playback-info
+      const url = videoService.getVideoStreamUrl(video);
+      
+      // Add auth token if authenticated
+      let finalUrl = url;
+      if (isAuthenticated) {
+        const token = localStorage.getItem('token');
+        if (token) {
+          finalUrl = `${url}${url.includes('?') ? '&' : '?'}auth=${encodeURIComponent(token)}`;
+        }
+      }
+      
+      // Calculate expiration (15 minutes from now)
+      const expiresIn = 900; // 15 minutes
+      const expiresAt = new Date(Date.now() + expiresIn * 1000).toISOString();
+      
+      return {
+        url: finalUrl,
+        expiresAt,
+        expiresIn,
+        isHLS
+      };
+    } catch (error) {
+      console.error('❌ Error fetching playback info:', error);
+      return null;
+    }
+  }, [video, isAuthenticated, isHLSVideo]);
+
+  /**
+   * Refresh token/URL before expiration
+   */
+  const refreshPlaybackUrl = useCallback(async () => {
+    console.log('🔄 Refreshing playback URL...');
+    
+    try {
+      const newPlaybackInfo = await fetchPlaybackInfo();
+      
+      if (!newPlaybackInfo) {
+        console.error('❌ Failed to refresh playback URL');
+        return;
+      }
+      
+      const videoElement = videoRef.current;
+      if (!videoElement) return;
+      
+      // Store current playback position
+      const currentTime = videoElement.currentTime;
+      const wasPlaying = !videoElement.paused;
+      
+      console.log('💾 Current position:', currentTime, 'Playing:', wasPlaying);
+      
+      // Update playback info
+      setPlaybackInfo(newPlaybackInfo);
+      
+      // Update source based on video type
+      if (newPlaybackInfo.isHLS && hlsRef.current) {
+        // For HLS, update the manifest URL
+        console.log('🎬 Updating HLS manifest URL');
+        hlsRef.current.loadSource(newPlaybackInfo.url);
+        
+        // Restore position after manifest loads
+        hlsRef.current.once(Hls.Events.MANIFEST_PARSED, () => {
+          videoElement.currentTime = currentTime;
+          if (wasPlaying) {
+            videoElement.play().catch(console.error);
+          }
+        });
+      } else {
+        // For MP4, update video source
+        console.log('🎬 Updating MP4 source');
+        videoElement.src = newPlaybackInfo.url;
+        videoElement.currentTime = currentTime;
+        
+        if (wasPlaying) {
+          videoElement.play().catch(console.error);
+        }
+      }
+      
+      console.log('✅ Playback URL refreshed successfully');
+      
+      // Schedule next refresh at 80% of expiration time
+      scheduleRefresh(newPlaybackInfo.expiresIn);
+      
+    } catch (error) {
+      console.error('❌ Error refreshing playback URL:', error);
+      setError('Failed to refresh video URL. Please reload the page.');
+    }
+  }, [fetchPlaybackInfo]);
+
+  /**
+   * Schedule auto-refresh at 80% of expiration time
+   */
+  const scheduleRefresh = useCallback((expiresIn: number) => {
+    // Clear existing timer
+    if (refreshTimerRef.current) {
+      clearTimeout(refreshTimerRef.current);
+    }
+    
+    // Calculate refresh time (80% of expiration)
+    const refreshTime = expiresIn * 0.8 * 1000; // Convert to milliseconds
+    
+    console.log(`⏰ Scheduling refresh in ${refreshTime / 1000} seconds`);
+    
+    refreshTimerRef.current = setTimeout(() => {
+      refreshPlaybackUrl();
+    }, refreshTime);
+  }, [refreshPlaybackUrl]);
+
+  /**
+   * Initialize video player (HLS or native)
    */
   const initializePlayer = useCallback(async () => {
     const videoElement = videoRef.current;
@@ -48,32 +174,26 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
     setIsLoading(true);
     
     try {
-      const streamUrl = videoService.getVideoStreamUrl(video);
-      let videoUrl = streamUrl;
-      
-      // Add auth token for authenticated users
-      if (isAuthenticated) {
-        const token = localStorage.getItem('token');
-        if (token) {
-          videoUrl = `${streamUrl}${streamUrl.includes('?') ? '&' : '?'}auth=${encodeURIComponent(token)}`;
-        }
+      // Fetch playback info
+      const info = await fetchPlaybackInfo();
+      if (!info) {
+        setError('Failed to load video. Please try again.');
+        setIsLoading(false);
+        return;
       }
       
-      // Set expiration time (15 minutes from now)
-      const expiresAt = new Date(Date.now() + 15 * 60 * 1000);
-      setUrlExpiresAt(expiresAt);
+      setPlaybackInfo(info);
       
       // Check if this is HLS video
-      if (isHLSVideo(video.video_path)) {
-        console.log('🎬 HLS video detected, initializing HLS player');
+      if (info.isHLS) {
+        console.log('🎬 Initializing HLS player');
         
-        // Check for native HLS support (Safari)
+        // Check if browser supports native HLS (Safari)
         if (videoElement.canPlayType('application/vnd.apple.mpegurl')) {
-          console.log('✅ Using native HLS support');
-          videoElement.src = videoUrl;
-          setIsLoading(false);
+          console.log('✅ Native HLS support detected');
+          videoElement.src = info.url;
         }
-        // Use hls.js for browsers without native support
+        // Use hls.js for other browsers
         else if (Hls.isSupported()) {
           console.log('✅ Using hls.js for HLS playback');
           
@@ -85,11 +205,11 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
           
           hlsRef.current = hls;
           
-          hls.loadSource(videoUrl);
+          hls.loadSource(info.url);
           hls.attachMedia(videoElement);
           
           hls.on(Hls.Events.MANIFEST_PARSED, () => {
-            console.log('✅ HLS manifest loaded successfully');
+            console.log('✅ HLS manifest parsed');
             setIsLoading(false);
             if (autoPlay) {
               videoElement.play().catch(console.error);
@@ -101,15 +221,15 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
             if (data.fatal) {
               switch (data.type) {
                 case Hls.ErrorTypes.NETWORK_ERROR:
-                  console.log('🔄 Network error, attempting recovery');
+                  console.log('🔄 Trying to recover from network error');
                   hls.startLoad();
                   break;
                 case Hls.ErrorTypes.MEDIA_ERROR:
-                  console.log('🔄 Media error, attempting recovery');
+                  console.log('🔄 Trying to recover from media error');
                   hls.recoverMediaError();
                   break;
                 default:
-                  setError('Failed to load HLS video');
+                  setError('Fatal error loading HLS video');
                   hls.destroy();
                   break;
               }
@@ -118,104 +238,24 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
         } else {
           setError('Your browser does not support HLS video playback');
           setIsLoading(false);
+          return;
         }
       } else {
         // Standard MP4 playback
-        console.log('🎬 MP4 video detected, using native playback');
-        videoElement.src = videoUrl;
+        console.log('🎬 Using native MP4 playback');
+        videoElement.src = info.url;
         setIsLoading(false);
       }
       
-      // Schedule URL refresh at 80% of expiration time
-      scheduleRefresh(expiresAt);
+      // Schedule refresh at 80% of expiration time
+      scheduleRefresh(info.expiresIn);
       
     } catch (error) {
       console.error('❌ Error initializing player:', error);
       setError('Failed to initialize video player');
       setIsLoading(false);
     }
-  }, [video, isAuthenticated, autoPlay, isHLSVideo]);
-
-  /**
-   * Refresh video URL before expiration (at 80% of lifetime)
-   */
-  const refreshVideoUrl = useCallback(async () => {
-    if (!videoRef.current || !urlExpiresAt) return;
-    
-    console.log('🔄 Refreshing video URL...');
-    
-    try {
-      const videoElement = videoRef.current;
-      const currentTime = videoElement.currentTime;
-      const wasPlaying = !videoElement.paused;
-      
-      // Get new URL
-      const streamUrl = videoService.getVideoStreamUrl(video);
-      let newUrl = streamUrl;
-      
-      if (isAuthenticated) {
-        const token = localStorage.getItem('token');
-        if (token) {
-          newUrl = `${streamUrl}${streamUrl.includes('?') ? '&' : '?'}auth=${encodeURIComponent(token)}`;
-        }
-      }
-      
-      // Update expiration time
-      const newExpiresAt = new Date(Date.now() + 15 * 60 * 1000);
-      setUrlExpiresAt(newExpiresAt);
-      
-      // Update source based on video type
-      if (isHLSVideo(video.video_path) && hlsRef.current) {
-        // For HLS, reload source
-        console.log('🔄 Refreshing HLS manifest');
-        hlsRef.current.loadSource(newUrl);
-        
-        hlsRef.current.once(Hls.Events.MANIFEST_PARSED, () => {
-          videoElement.currentTime = currentTime;
-          if (wasPlaying) {
-            videoElement.play().catch(console.error);
-          }
-        });
-      } else {
-        // For MP4, update src
-        console.log('🔄 Refreshing MP4 source');
-        videoElement.src = newUrl;
-        videoElement.currentTime = currentTime;
-        
-        if (wasPlaying) {
-          videoElement.play().catch(console.error);
-        }
-      }
-      
-      console.log('✅ Video URL refreshed successfully');
-      
-      // Schedule next refresh
-      scheduleRefresh(newExpiresAt);
-      
-    } catch (error) {
-      console.error('❌ Error refreshing video URL:', error);
-    }
-  }, [video, isAuthenticated, urlExpiresAt, isHLSVideo]);
-
-  /**
-   * Schedule auto-refresh at 80% of expiration time
-   */
-  const scheduleRefresh = useCallback((expiresAt: Date) => {
-    if (refreshTimerRef.current) {
-      clearTimeout(refreshTimerRef.current);
-    }
-    
-    const now = Date.now();
-    const expiresAtTime = expiresAt.getTime();
-    const lifetime = expiresAtTime - now;
-    const refreshTime = lifetime * 0.8;
-    
-    console.log(`⏰ Scheduling URL refresh in ${Math.round(refreshTime / 1000)} seconds`);
-    
-    refreshTimerRef.current = setTimeout(() => {
-      refreshVideoUrl();
-    }, refreshTime);
-  }, [refreshVideoUrl]);
+  }, [video, fetchPlaybackInfo, autoPlay, scheduleRefresh]);
 
   /**
    * Initialize player on mount
@@ -236,7 +276,7 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
   }, [initializePlayer]);
 
   /**
-   * Security: Disable context menu and keyboard shortcuts
+   * Security: Disable context menu and shortcuts
    */
   useEffect(() => {
     const videoElement = videoRef.current;
@@ -284,6 +324,9 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
     };
   }, []);
 
+  /**
+   * Handle time update
+   */
   const handleTimeUpdate = () => {
     const videoElement = videoRef.current;
     if (!videoElement) return;
@@ -363,7 +406,7 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
       </video>
 
       {/* HLS indicator */}
-      {isHLSVideo(video.video_path) && (
+      {playbackInfo?.isHLS && (
         <div className="absolute top-4 right-4 bg-blue-600 bg-opacity-90 text-white px-2 py-1 rounded text-xs z-20">
           HLS
         </div>
@@ -398,7 +441,7 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
         </div>
       )}
 
-      {/* Anti-screenshot protection CSS - Fixed to use regular style tag */}
+      {/* Anti-screenshot protection CSS */}
       <style>{`
         video::before {
           content: "";
@@ -418,7 +461,6 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
           }
         }
         
-        /* Disable text selection on video container */
         .video-container * {
           user-select: none !important;
           -webkit-user-select: none !important;
@@ -426,7 +468,6 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
           -ms-user-select: none !important;
         }
         
-        /* Enhanced security styles */
         video {
           -webkit-user-drag: none !important;
           -khtml-user-drag: none !important;
@@ -436,7 +477,6 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
           pointer-events: auto;
         }
         
-        /* Disable video element interactions */
         video::-webkit-media-controls-panel {
           -webkit-appearance: none;
         }
@@ -453,6 +493,4 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
   );
 };
 
-export default VideoPlayer;
-
-// Last updated: 2025-08-19 16:12:58 | Azizkh07
+export default VideoPlayerHLS;
