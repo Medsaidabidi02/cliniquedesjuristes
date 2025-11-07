@@ -12,10 +12,11 @@ export interface Video {
   video_path: string;
   hls_url?: string;
   playback_url?: string;
+  thumbnail_path?: string;
+  thumbnail_url?: string;  // Public URL from Hetzner
   file_size?: number;
   duration?: number;
   mime_type?: string;
-  thumbnail_path?: string;
   is_active: boolean;
   is_free?: boolean;
   order_index?: number;
@@ -172,13 +173,18 @@ export class VideoService {
    * Get thumbnail URL (if available)
    */
   getThumbnailUrl(video: Video): string {
+    // Use thumbnail_url from API if available (Hetzner public URL)
+    if (video.thumbnail_url) {
+      return video.thumbnail_url;
+    }
+    
+    // Fallback if old thumbnail_path exists
     if (video.thumbnail_path) {
       // If it's already a full URL, return as is
       if (video.thumbnail_path.startsWith('http')) {
         return video.thumbnail_path;
       }
       
-      // Fallback for relative paths (shouldn't happen with Hetzner)
       console.log(`🖼️ Thumbnail path for video ${video.id}: ${video.thumbnail_path}`);
       return video.thumbnail_path;
     }

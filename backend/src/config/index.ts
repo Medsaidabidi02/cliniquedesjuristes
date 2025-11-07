@@ -15,6 +15,8 @@ export const config = {
     enabled: process.env.ENABLE_HETZNER === 'true',
     endpoint: process.env.HETZNER_ENDPOINT || '',
     bucket: process.env.HETZNER_BUCKET || '',
+    accessKeyId: process.env.HETZNER_ACCESS_KEY_ID || '',
+    secretAccessKey: process.env.HETZNER_SECRET_ACCESS_KEY || '',
   },
   hls: {
     enabled: process.env.ENABLE_HLS === 'true',

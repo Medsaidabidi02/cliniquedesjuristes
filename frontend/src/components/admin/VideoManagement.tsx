@@ -7,6 +7,9 @@ interface Video {
   description: string;
   video_path: string;
   thumbnail_path: string;
+  thumbnail_url?: string;  // Public URL from Hetzner
+  hls_url?: string;  // Public HLS URL from Hetzner
+  playback_url?: string;  // Public playback URL from Hetzner
   duration: number;
   subject_id: number;
   file_size: number;
@@ -340,9 +343,9 @@ const VideoManagement: React.FC = () => {
           <div key={video.id} className="bg-white rounded-lg shadow-sm border overflow-hidden">
             {/* Video Thumbnail */}
             <div className="relative aspect-video bg-gray-100">
-              {video.thumbnail_path ? (
+              {video.thumbnail_url ? (
                 <img
-                  src={`/api/videos/thumbnail/${video.thumbnail_path}`}
+                  src={video.thumbnail_url}
                   alt={video.title}
                   className="w-full h-full object-cover"
                   onError={(e) => {
@@ -518,7 +521,7 @@ const VideoManagement: React.FC = () => {
                 <video
                   controls
                   className="w-full h-full"
-                  poster={selectedVideo.thumbnail_path ? `/api/videos/thumbnail/${selectedVideo.thumbnail_path}` : undefined}
+                  poster={selectedVideo.thumbnail_url || undefined}
                   preload="metadata"
                   onError={(e) => {
                     console.error('❌ Video playback error for Medsaidabidi02:', e);

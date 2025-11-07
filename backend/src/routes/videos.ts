@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import database from '../config/database';
-import { getPublicVideoUrl, isValidVideoPath } from '../services/hetznerService';
+import { getPublicVideoUrl, getPublicAssetUrl, isValidVideoPath } from '../services/hetznerService';
 import { optionalAuth, AuthRequest } from '../middleware/auth';
 
 const router = Router();
@@ -34,6 +34,7 @@ router.get('/', async (req, res) => {
     const videos = result.rows.map(video => {
       const videoPath = video.video_path;
       let publicUrl = null;
+      let thumbnailUrl = null;
       
       if (videoPath && isValidVideoPath(videoPath)) {
         try {
@@ -43,10 +44,20 @@ router.get('/', async (req, res) => {
         }
       }
       
+      // Generate public URL for thumbnail if it exists
+      if (video.thumbnail_path) {
+        try {
+          thumbnailUrl = getPublicAssetUrl(video.thumbnail_path);
+        } catch (error) {
+          console.error(`❌ Error generating thumbnail URL for video ${video.id}:`, error);
+        }
+      }
+      
       return {
         ...video,
         hls_url: publicUrl,
         playback_url: publicUrl,
+        thumbnail_url: thumbnailUrl,
       };
     });
     
@@ -175,6 +186,7 @@ router.get('/:id', optionalAuth, async (req: AuthRequest, res) => {
     // Generate public HLS URL
     const videoPath = video.video_path;
     let publicUrl = null;
+    let thumbnailUrl = null;
     
     if (videoPath && isValidVideoPath(videoPath)) {
       try {
@@ -191,11 +203,21 @@ router.get('/:id', optionalAuth, async (req: AuthRequest, res) => {
       });
     }
     
+    // Generate public URL for thumbnail if it exists
+    if (video.thumbnail_path) {
+      try {
+        thumbnailUrl = getPublicAssetUrl(video.thumbnail_path);
+      } catch (error) {
+        console.error(`❌ Error generating thumbnail URL for video ${id}:`, error);
+      }
+    }
+    
     console.log(`✅ Found video ${id} with public HLS URL`);
     res.json({
       ...video,
       hls_url: publicUrl,
       playback_url: publicUrl,
+      thumbnail_url: thumbnailUrl,
     });
     
   } catch (error) {

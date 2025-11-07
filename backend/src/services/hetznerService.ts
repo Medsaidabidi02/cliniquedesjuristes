@@ -31,6 +31,30 @@ export const getPublicVideoUrl = (videoPath: string): string => {
 };
 
 /**
+ * Generate a public URL for any asset (thumbnails, images, etc.)
+ * @param assetPath - The S3 object key (e.g., "thumbnails/video_1.jpg")
+ * @returns Public URL to the asset
+ */
+export const getPublicAssetUrl = (assetPath: string): string => {
+  if (!config.hetzner.enabled) {
+    throw new Error('Hetzner storage is not enabled');
+  }
+
+  if (!config.hetzner.endpoint || !config.hetzner.bucket) {
+    throw new Error('Hetzner endpoint and bucket must be configured');
+  }
+
+  // Remove leading slash if present
+  const cleanPath = assetPath.startsWith('/') ? assetPath.substring(1) : assetPath;
+
+  // Build the public URL
+  const publicUrl = `${config.hetzner.endpoint}/${config.hetzner.bucket}/${cleanPath}`;
+
+  console.log(`🖼️ Generated public asset URL: ${publicUrl}`);
+  return publicUrl;
+};
+
+/**
  * Validate video path format
  * @param videoPath - The S3 object key to validate
  * @returns true if valid, false otherwise

@@ -30,10 +30,11 @@ const VideoPreview: React.FC<VideoPreviewProps> = ({
   };
 
   const getThumbnailUrl = () => {
-    if (video.thumbnail_path) {
-      const baseUrl = process.env.REACT_APP_API_URL || 'http://localhost:5001';
-      return `${baseUrl}/api/videos/thumbnail/${video.thumbnail_path}`;
+    // Use thumbnail_url from API if available (Hetzner URL)
+    if (video.thumbnail_url) {
+      return video.thumbnail_url;
     }
+    // Fallback to placeholder
     return '/api/placeholder/320/180';
   };
 
