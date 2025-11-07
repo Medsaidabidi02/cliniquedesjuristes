@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { api, getErrorMessage } from '../../lib/api';
+import VideoPlayer from '../VideoPlayer';
 
 interface Video {
   id: number;
@@ -518,43 +519,21 @@ const VideoManagement: React.FC = () => {
               
               {/* ✅ FIXED: Video Player with proper streaming endpoint */}
               <div className="aspect-video bg-black rounded-lg overflow-hidden mb-4">
-                <video
-                  controls
-                  className="w-full h-full"
-                  poster={selectedVideo.thumbnail_url || undefined}
-                  preload="metadata"
-                  onError={(e) => {
-                    console.error('❌ Video playback error for Medsaidabidi02:', e);
-                    console.error('❌ Video source:', `/api/videos/stream/${selectedVideo.video_path}`);
-                  }}
-                  onLoadStart={() => {
-                    console.log('🎬 Starting to load video for Medsaidabidi02:', selectedVideo.title);
-                  }}
-                  onCanPlay={() => {
-                    console.log('✅ Video ready to play for Medsaidabidi02:', selectedVideo.title);
-                  }}
-                >
-                  <source 
-                    src={`/api/videos/stream/${selectedVideo.video_path}`} 
-                    type="video/mp4" 
+                {selectedVideo.hls_url || selectedVideo.playback_url ? (
+                  <VideoPlayer
+                    video={selectedVideo}
+                    isAuthenticated={true}
+                    autoPlay={false}
+                    className="w-full h-full"
                   />
-                  {/* Fallback for older browsers */}
-                  <source 
-                    src={`/uploads/videos/${selectedVideo.video_path}`} 
-                    type="video/mp4" 
-                  />
-                  <p className="text-white p-4 text-center">
-                    Votre navigateur ne supporte pas la lecture vidéo.
-                    <br />
-                    <a 
-                      href={`/api/videos/stream/${selectedVideo.video_path}`} 
-                      className="underline text-blue-300 hover:text-blue-100 ml-2"
-                      download={selectedVideo.title}
-                    >
-                      📥 Télécharger la vidéo
-                    </a>
-                  </p>
-                </video>
+                ) : (
+                  <div className="w-full h-full flex items-center justify-center text-white">
+                    <div className="text-center">
+                      <p className="mb-2">❌ HLS URL not available</p>
+                      <p className="text-sm text-gray-400">Configure Hetzner credentials in backend/.env</p>
+                    </div>
+                  </div>
+                )}
               </div>
               
               {/* Video Details */}
