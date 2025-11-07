@@ -81,9 +81,13 @@ aws s3api put-bucket-policy \
   --endpoint-url=https://fsn1.your-objectstorage.com
 ```
 
-### 2. Configure CORS
+### 2. Configure CORS (CRITICAL FOR VIDEO PLAYBACK)
 
-HLS streaming requires proper CORS headers:
+**⚠️ IMPORTANT**: HLS streaming requires proper CORS headers. Without CORS configuration, videos will fail to load with network errors.
+
+See **[CORS_SETUP.md](./CORS_SETUP.md)** for complete CORS configuration guide and troubleshooting.
+
+Quick setup:
 
 ```bash
 # Create CORS configuration
@@ -113,6 +117,8 @@ aws s3api put-bucket-cors \
   --cors-configuration file://cors-config.json \
   --endpoint-url=https://fsn1.your-objectstorage.com
 ```
+
+**📖 For troubleshooting CORS issues, see [CORS_SETUP.md](./CORS_SETUP.md)**
 
 ### 3. Configure Cache Headers
 

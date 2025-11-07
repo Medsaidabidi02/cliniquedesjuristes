@@ -47,6 +47,12 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
         enableWorker: true,
         lowLatencyMode: false,
         backBufferLength: 90,
+        xhrSetup: function(xhr, url) {
+          // Set proper CORS headers for cross-origin requests
+          xhr.withCredentials = false;
+        },
+        // Enable debug for troubleshooting
+        debug: false,
       });
 
       hlsRef.current = hls;
@@ -68,21 +74,37 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
 
       hls.on(Hls.Events.ERROR, (event, data) => {
         console.error('❌ HLS error:', data);
+        setIsLoading(false);
         
         if (data.fatal) {
           switch (data.type) {
             case Hls.ErrorTypes.NETWORK_ERROR:
-              console.error('Fatal network error encountered, trying to recover');
-              setError('Network error loading video. Please check your connection.');
-              hls.startLoad();
+              console.error('Fatal network error encountered', data);
+              if (data.response?.code === 0) {
+                setError('CORS error: Video server must allow cross-origin requests. Check HETZNER_SETUP.md for CORS configuration.');
+              } else if (data.response?.code === 403) {
+                setError('Access denied: Video file not accessible. Check bucket permissions.');
+              } else if (data.response?.code === 404) {
+                setError('Video not found: Check that video_path in database matches S3 file location.');
+              } else {
+                setError('Network error loading video. Check browser console for details.');
+              }
+              // Try to recover
+              setTimeout(() => {
+                if (hlsRef.current) {
+                  hlsRef.current.startLoad();
+                }
+              }, 1000);
               break;
             case Hls.ErrorTypes.MEDIA_ERROR:
               console.error('Fatal media error encountered, trying to recover');
               hls.recoverMediaError();
+              setError('Media error. Attempting to recover...');
+              setTimeout(() => setError(''), 2000);
               break;
             default:
               console.error('Fatal error, cannot recover');
-              setError('Error loading video. Please try again later.');
+              setError('Error loading video. Please check console for details.');
               hls.destroy();
               break;
           }

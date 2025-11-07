@@ -330,6 +330,11 @@ const ProfessionalVideoPlayer: React.FC<ProfessionalVideoPlayerProps> = ({
         enableWorker: true,
         lowLatencyMode: false,
         backBufferLength: 90,
+        xhrSetup: function(xhr, url) {
+          // Set proper CORS headers for cross-origin requests
+          xhr.withCredentials = false;
+        },
+        debug: false,
       });
 
       hlsRef.current = hls;
@@ -338,6 +343,7 @@ const ProfessionalVideoPlayer: React.FC<ProfessionalVideoPlayerProps> = ({
 
       hls.on(Hls.Events.MANIFEST_PARSED, () => {
         console.log('✅ HLS manifest parsed in ProfessionalVideoPlayer');
+        setIsBuffering(false);
         if (autoPlay) {
           videoElement.play().catch(err => {
             console.warn('⚠️ Autoplay prevented:', err);
@@ -347,11 +353,17 @@ const ProfessionalVideoPlayer: React.FC<ProfessionalVideoPlayerProps> = ({
 
       hls.on(Hls.Events.ERROR, (event, data) => {
         console.error('❌ HLS error in ProfessionalVideoPlayer:', data);
+        setIsBuffering(false);
         if (data.fatal) {
           switch (data.type) {
             case Hls.ErrorTypes.NETWORK_ERROR:
-              console.error('Fatal network error, trying to recover');
-              hls.startLoad();
+              console.error('Fatal network error, trying to recover', data);
+              // Try to recover
+              setTimeout(() => {
+                if (hlsRef.current) {
+                  hlsRef.current.startLoad();
+                }
+              }, 1000);
               break;
             case Hls.ErrorTypes.MEDIA_ERROR:
               console.error('Fatal media error, trying to recover');
