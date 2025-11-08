@@ -81,8 +81,10 @@ Visit your domain in a browser and test login with:
 
 ## 📚 Documentation
 
+- **[QUICK_REFERENCE.md](QUICK_REFERENCE.md)** - Quick reference card for deployment (print-friendly)
 - **[DEPLOYMENT_GUIDE.md](DEPLOYMENT_GUIDE.md)** - Complete step-by-step deployment instructions
 - **[DEPLOYMENT_CHECKLIST.md](DEPLOYMENT_CHECKLIST.md)** - Checklist to ensure nothing is missed
+- **[TROUBLESHOOTING.md](TROUBLESHOOTING.md)** - Common issues and solutions
 
 ## 🏗️ Architecture
 
