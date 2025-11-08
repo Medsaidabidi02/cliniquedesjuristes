@@ -30,7 +30,6 @@ RewriteBase /
 # Environment Variables for Backend
 # Note: These are used by Passenger when starting the Node.js app
 # ========================================================================
-<IfModule Litespeed>
 # Server Configuration
 SetEnv NODE_ENV production
 SetEnv PORT 3000
@@ -63,7 +62,6 @@ SetEnv HETZNER_BUCKET cliniquedesjuristes
 
 # HLS Streaming
 SetEnv ENABLE_HLS true
-</IfModule>
 
 # ========================================================================
 # API Routes - Proxy to Passenger/Node.js backend
