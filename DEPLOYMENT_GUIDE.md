@@ -90,13 +90,18 @@ You'll run migrations after deployment. For now, ensure the database is created 
 3. Configure the application:
    - **Node.js version:** 18.x or higher
    - **Application mode:** Production
-   - **Application root:** `backend`
+   - **Application root:** `backend` (or whatever you name your backend folder, e.g., `api_backend`)
    - **Application URL:** Leave blank (will use document root)
    - **Application startup file:** `dist/server.js`
    - **Passenger log file:** `logs/passenger.log` (optional)
 4. Click **Create**
 5. **Important:** Copy the command to enter the virtual environment (shown after creation)
    - It looks like: `source /home/c2668909c/nodevenv/backend/18/bin/activate`
+   - **NOTE:** If your backend folder is named differently (e.g., `api_backend`), the path will reflect that
+
+**CRITICAL:** Remember your backend folder name! You'll need to update it in:
+- `.htaccess` file (2 locations: PassengerAppRoot and PassengerNodejs)
+- All deployment commands throughout this guide
 
 ---
 
@@ -201,7 +206,40 @@ ENABLE_HLS=true
 - `YOUR_PASSWORD_HERE` with your actual database password
 - `c2668909c` with your actual cPanel username prefix
 - `cliniquedesjuristes.com` with your actual domain
+- `backend` with your actual backend folder name if different (e.g., `api_backend`)
 - Hetzner credentials if using object storage
+
+### Step 7b: Configure .htaccess File
+
+**CRITICAL:** The `.htaccess` file in the repository is a template. You MUST update it for your setup.
+
+Edit `/home/c2668909c/public_html/.htaccess` and update these lines:
+
+```apache
+# Line 8 - Update username AND backend folder name
+PassengerAppRoot "/home/YOUR_USERNAME/public_html/YOUR_BACKEND_FOLDER"
+
+# Line 10 - Update username AND backend folder name AND Node version
+PassengerNodejs "/home/YOUR_USERNAME/nodevenv/public_html/YOUR_BACKEND_FOLDER/18/bin/node"
+```
+
+**Example for user c2668909c with backend folder named api_backend:**
+```apache
+PassengerAppRoot "/home/c2668909c/public_html/api_backend"
+PassengerNodejs "/home/c2668909c/nodevenv/public_html/api_backend/18/bin/node"
+```
+
+**Common Mistakes to Avoid:**
+1. ❌ Leaving `backend` when your folder is `api_backend`
+2. ❌ Adding proxy rules like `RewriteRule ^api/(.*)$ http://localhost:3000/api/$1 [P,L,QSA]`
+3. ❌ Having duplicate Passenger configuration blocks
+4. ❌ Wrong Node.js version in path (should match cPanel setup)
+
+**Verify your .htaccess:**
+```bash
+# Check the paths match your actual folders
+cat ~/public_html/.htaccess | grep Passenger
+```
 
 ### Step 8: Set File Permissions
 

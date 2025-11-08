@@ -2,6 +2,78 @@
 
 ## Common Deployment Issues & Solutions
 
+### ❌ 403 Forbidden - htaccess syntax error
+
+**Symptom:** "403 Forbidden - Server unable to read htaccess file, denying access to be safe"
+
+**Root Causes:**
+1. Invalid Apache directives (e.g., `<IfModule Litespeed>`)
+2. Proxy rules to localhost (e.g., `RewriteRule ^api/(.*)$ http://localhost:3000/api/$1 [P,L,QSA]`)
+3. Duplicate Passenger configurations
+4. Wrong paths in PassengerAppRoot or PassengerNodejs
+
+**Solution:**
+```bash
+# 1. Remove ALL proxy rules to localhost - Passenger handles routing directly
+# Delete lines like:
+# RewriteRule ^api/(.*)$ http://localhost:3000/api/$1 [P,L,QSA]
+
+# 2. Remove duplicate Passenger configs - keep only ONE
+# If you have both Node 16 and 18 configs, keep only the version you're using
+
+# 3. Update paths to match YOUR setup:
+PassengerAppRoot "/home/YOUR_USERNAME/public_html/YOUR_BACKEND_FOLDER"
+PassengerNodejs "/home/YOUR_USERNAME/nodevenv/public_html/YOUR_BACKEND_FOLDER/18/bin/node"
+
+# Common mistake: .htaccess says "backend" but folder is "api_backend"
+# Fix: Change "backend" to "api_backend" in BOTH lines above
+
+# 4. Test htaccess syntax:
+apachectl configtest  # If available
+
+# 5. Check Apache error logs:
+tail -50 ~/logs/error_log
+```
+
+**Example of CORRECT Passenger config for api_backend folder:**
+```apache
+PassengerAppRoot "/home/c2668909c/public_html/api_backend"
+PassengerBaseURI "/"
+PassengerNodejs "/home/c2668909c/nodevenv/public_html/api_backend/18/bin/node"
+PassengerAppType node
+PassengerStartupFile dist/server.js
+PassengerEnabled on
+```
+
+---
+
+### ❌ Cannot find module 'express' (or other dependencies)
+
+**Symptom:** Passenger logs show "Error: Cannot find module 'express'"
+
+**Root Cause:** Dependencies not installed in backend folder
+
+**Solution:**
+```bash
+# 1. Navigate to backend folder (use YOUR actual folder name)
+cd ~/public_html/api_backend  # or ~/public_html/backend
+
+# 2. Activate Node.js environment (use YOUR paths)
+source ~/nodevenv/public_html/api_backend/18/bin/activate
+
+# 3. Install dependencies
+npm install --production
+
+# 4. Verify installation
+ls node_modules/ | wc -l  # Should show > 50
+
+# 5. Restart application
+mkdir -p tmp
+touch tmp/restart.txt
+```
+
+---
+
 ### ❌ Cannot connect to server localhost:5001
 
 **Symptom:** Browser shows "Cannot connect to server localhost:5001"
