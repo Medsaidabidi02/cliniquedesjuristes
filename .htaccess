@@ -2,9 +2,22 @@
 # .htaccess Configuration for Clinique des Juristes
 # cPanel Deployment with Passenger + React Frontend
 # ========================================================================
+# IMPORTANT: This file should REPLACE any existing .htaccess file
+# Remove all previous Passenger proxy configurations before using this
+# ========================================================================
+
+# ========================================================================
+# CONFIGURATION INSTRUCTIONS:
+# 1. Replace 'c2668909c' with your actual cPanel username
+# 2. Replace 'backend' with your backend folder name (e.g., 'api_backend')
+# 3. Update Node.js version (18, 16, etc.) to match your cPanel setup
+# 4. Update domain name throughout the file
+# 5. DO NOT add proxy rules to localhost - Passenger handles routing directly
+# ========================================================================
 
 # DO NOT REMOVE. CLOUDLINUX PASSENGER CONFIGURATION BEGIN
 # Configure Passenger to run Node.js backend
+# IMPORTANT: Update these paths to match your setup
 PassengerAppRoot "/home/c2668909c/public_html/backend"
 PassengerBaseURI "/"
 PassengerNodejs "/home/c2668909c/nodevenv/public_html/backend/18/bin/node"
@@ -64,10 +77,13 @@ SetEnv HETZNER_BUCKET cliniquedesjuristes
 SetEnv ENABLE_HLS true
 
 # ========================================================================
-# API Routes - Proxy to Passenger/Node.js backend
-# All /api/* requests are handled by the Node.js application
+# API Routes - Handled directly by Passenger
 # ========================================================================
-# Don't rewrite API routes - let Passenger handle them
+# IMPORTANT: Do NOT add proxy rules like:
+#   RewriteRule ^api/(.*)$ http://localhost:3000/api/$1 [P,L,QSA]
+# This causes 403 errors! Passenger runs Node.js directly, no proxy needed.
+# ========================================================================
+# Don't rewrite API routes - let Passenger handle them directly
 RewriteCond %{REQUEST_URI} ^/api/
 RewriteRule .* - [L]
 
