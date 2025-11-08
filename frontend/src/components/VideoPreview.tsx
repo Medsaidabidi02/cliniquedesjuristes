@@ -1,5 +1,6 @@
 import React, { useRef, useState, useEffect } from 'react';
-import { Video } from '../lib/videoService';
+import Hls from 'hls.js';
+import { Video, videoService } from '../lib/videoService';
 
 interface VideoPreviewProps {
   video: Video;
@@ -17,23 +18,70 @@ const VideoPreview: React.FC<VideoPreviewProps> = ({
   onPreviewClick
 }) => {
   const videoRef = useRef<HTMLVideoElement>(null);
+  const hlsRef = useRef<Hls | null>(null);
   const [isHovered, setIsHovered] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
 
   console.log(`🎬 VideoPreview for ${video.title} - Azizkh07 at 2025-08-20 14:30:38`);
 
+  // Initialize HLS.js for video preview
+  useEffect(() => {
+    const videoElement = videoRef.current;
+    if (!videoElement) return;
+
+    const hlsUrl = videoService.getVideoPlaybackUrl(video);
+    if (!hlsUrl) {
+      console.error('❌ No HLS URL available for preview');
+      return;
+    }
+
+    // Check if HLS.js is supported
+    if (Hls.isSupported()) {
+      const hls = new Hls({
+        enableWorker: true,
+        lowLatencyMode: false,
+        backBufferLength: 30,
+      });
+
+      hlsRef.current = hls;
+      hls.loadSource(hlsUrl);
+      hls.attachMedia(videoElement);
+
+      hls.on(Hls.Events.MANIFEST_PARSED, () => {
+        console.log('✅ HLS manifest parsed for preview');
+      });
+
+      hls.on(Hls.Events.ERROR, (event, data) => {
+        if (data.fatal) {
+          console.error('❌ HLS error in preview:', data);
+        }
+      });
+
+    } else if (videoElement.canPlayType('application/vnd.apple.mpegurl')) {
+      // Native HLS support (Safari, iOS)
+      videoElement.src = hlsUrl;
+    }
+
+    // Cleanup
+    return () => {
+      if (hlsRef.current) {
+        hlsRef.current.destroy();
+        hlsRef.current = null;
+      }
+    };
+  }, [video]);
+
   const getVideoUrl = () => {
-    const baseUrl = process.env.REACT_APP_API_URL || 'http://localhost:5001';
-    const filename = video.video_path.split('/').pop();
-    return `${baseUrl}/api/videos/stream/${filename}`;
+    return videoService.getVideoPlaybackUrl(video);
   };
 
   const getThumbnailUrl = () => {
-    if (video.thumbnail_path) {
-      const baseUrl = process.env.REACT_APP_API_URL || 'http://localhost:5001';
-      return `${baseUrl}/api/videos/thumbnail/${video.thumbnail_path}`;
+    // Use thumbnail_url from API if available (Hetzner URL)
+    if (video.thumbnail_url) {
+      return video.thumbnail_url;
     }
+    // Fallback to placeholder
     return '/api/placeholder/320/180';
   };
 
@@ -97,7 +145,6 @@ const VideoPreview: React.FC<VideoPreviewProps> = ({
       {/* Preview Video */}
       <video
         ref={videoRef}
-        src={getVideoUrl()}
         muted
         playsInline
         onTimeUpdate={handleTimeUpdate}

@@ -58,31 +58,36 @@ export const authenticateToken = async (req: AuthRequest, res: Response, next: N
       return res.status(403).json({ error: 'User not approved' });
     }
 
-    // Check if user is still logged in (simple one-session enforcement)
-    if (user.is_logged_in !== undefined && !user.is_logged_in) {
-      console.warn(`❌ User ${decoded.id} is not logged in (logged out)`);
-      return res.status(401).json({ 
-        error: 'Session expired - logged out',
-        sessionExpired: true,
-        loggedInElsewhere: false
-      });
-    }
-
-    // Check if session ID matches (ensures only one session is valid)
-    if (user.current_session_id !== undefined) {
-      if (user.current_session_id !== decoded.sessionId) {
-        console.warn(`❌ User ${decoded.id} session mismatch (logged in elsewhere)`);
-        console.warn(`   Expected: ${user.current_session_id?.substring(0, 12)}..., Got: ${decoded.sessionId?.substring(0, 12)}...`);
+    // Skip login checks for admin users (is_admin = 1)
+    if (!user.is_admin) {
+      // Check if user is still logged in (simple one-session enforcement)
+      if (user.is_logged_in !== undefined && !user.is_logged_in) {
+        console.warn(`❌ User ${decoded.id} is not logged in (logged out)`);
         return res.status(401).json({ 
-          error: 'Session expired - logged in from another device',
+          error: 'Session expired - logged out',
           sessionExpired: true,
-          loggedInElsewhere: true
+          loggedInElsewhere: false
         });
       }
-      console.log(`✅ User ${decoded.id} session ID matches - authenticated`);
+
+      // Check if session ID matches (ensures only one session is valid)
+      if (user.current_session_id !== undefined) {
+        if (user.current_session_id !== decoded.sessionId) {
+          console.warn(`❌ User ${decoded.id} session mismatch (logged in elsewhere)`);
+          console.warn(`   Expected: ${user.current_session_id?.substring(0, 12)}..., Got: ${decoded.sessionId?.substring(0, 12)}...`);
+          return res.status(401).json({ 
+            error: 'Session expired - logged in from another device',
+            sessionExpired: true,
+            loggedInElsewhere: true
+          });
+        }
+        console.log(`✅ User ${decoded.id} session ID matches - authenticated`);
+      } else {
+        // Fallback for databases without current_session_id column
+        console.log(`✅ User ${decoded.id} is_logged_in check passed (basic mode)`);
+      }
     } else {
-      // Fallback for databases without current_session_id column
-      console.log(`✅ User ${decoded.id} is_logged_in check passed (basic mode)`);
+      console.log(`✅ Admin user ${decoded.id} - skipping login/session checks`);
     }
 
     // Attach complete user info to request for downstream handlers

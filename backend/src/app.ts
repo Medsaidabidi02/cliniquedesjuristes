@@ -3,7 +3,6 @@ import cors from 'cors';
 import rateLimit from 'express-rate-limit';
 import helmet from 'helmet';
 import morgan from 'morgan';
-import path from 'path';
 import { usersRoutes } from './routes/users';
 import { userCoursesRoutes } from './routes/userCourses';
 import { debugRoutes } from './routes/debug';
@@ -116,18 +115,7 @@ if (process.env.NODE_ENV !== 'test') {
   app.use(morgan('combined'));
 }
 
-// ✅ Serve static files for uploads FIRST (before API routes)
-app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
-app.use('/uploads/blog', express.static(path.join(__dirname, '../uploads/blog')));
-app.use('/uploads/videos', express.static(path.join(__dirname, '../uploads/videos')));
-app.use('/uploads/thumbnails', express.static(path.join(__dirname, '../uploads/thumbnails')));
-
-console.log('📁 Static file serving enabled for uploads');
-console.log('📁 Upload paths configured:');
-console.log('  - Main uploads:', path.join(__dirname, '../uploads'));
-console.log('  - Blog uploads:', path.join(__dirname, '../uploads/blog'));
-console.log('  - Video uploads:', path.join(__dirname, '../uploads/videos'));
-console.log('  - Thumbnail uploads:', path.join(__dirname, '../uploads/thumbnails'));
+console.log('📁 Static file serving disabled - using Hetzner public HLS only');
 
 // Health check endpoint (before other routes)
 app.get('/api/health', (req, res) => {
@@ -178,6 +166,7 @@ console.log('🔗 All API routes configured successfully');
 
 // ✅ Serve React static files (AFTER API routes but BEFORE catch-all)
 if (process.env.NODE_ENV === 'production') {
+  const path = require('path');
   // Serve static files from React build
   app.use(express.static(path.join(__dirname, '../build')));
   console.log('📱 Serving React build files from:', path.join(__dirname, '../build'));
@@ -210,6 +199,7 @@ app.use('/api/*', (req, res) => {
 
 // ✅ React Router fallback (MUST be last)
 if (process.env.NODE_ENV === 'production') {
+  const path = require('path');
   // Handle React Router - return all non-API requests to React app
   app.get('*', (req, res) => {
     console.log(`🎯 Serving React app for route: ${req.path}`);

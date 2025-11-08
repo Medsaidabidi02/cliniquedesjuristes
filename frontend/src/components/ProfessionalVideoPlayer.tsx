@@ -1,5 +1,6 @@
 import React, { useRef, useState, useEffect, useCallback } from 'react';
-import { Video } from '../lib/videoService';
+import Hls from 'hls.js';
+import { Video, videoService } from '../lib/videoService';
 
 interface ProfessionalVideoPlayerProps {
   video: Video;
@@ -21,6 +22,7 @@ const ProfessionalVideoPlayer: React.FC<ProfessionalVideoPlayerProps> = ({
   autoPlay = false
 }) => {
   const videoRef = useRef<HTMLVideoElement>(null);
+  const hlsRef = useRef<Hls | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const progressRef = useRef<HTMLDivElement>(null);
   
@@ -309,11 +311,92 @@ const ProfessionalVideoPlayer: React.FC<ProfessionalVideoPlayerProps> = ({
     }
   }, [autoPlay]);
 
-  // Get video stream URL
+  // Initialize HLS.js for video playback
+  useEffect(() => {
+    const videoElement = videoRef.current;
+    if (!videoElement) return;
+
+    const hlsUrl = getVideoUrl();
+    if (!hlsUrl) {
+      console.error('❌ No HLS URL available');
+      return;
+    }
+
+    console.log('🎬 Initializing HLS for ProfessionalVideoPlayer:', hlsUrl);
+
+    // Check if HLS.js is supported
+    if (Hls.isSupported()) {
+      const hls = new Hls({
+        enableWorker: true,
+        lowLatencyMode: false,
+        backBufferLength: 90,
+        xhrSetup: function(xhr, url) {
+          // Set proper CORS headers for cross-origin requests
+          xhr.withCredentials = false;
+        },
+        debug: false,
+      });
+
+      hlsRef.current = hls;
+      hls.loadSource(hlsUrl);
+      hls.attachMedia(videoElement);
+
+      hls.on(Hls.Events.MANIFEST_PARSED, () => {
+        console.log('✅ HLS manifest parsed in ProfessionalVideoPlayer');
+        setIsBuffering(false);
+        if (autoPlay) {
+          videoElement.play().catch(err => {
+            console.warn('⚠️ Autoplay prevented:', err);
+          });
+        }
+      });
+
+      hls.on(Hls.Events.ERROR, (event, data) => {
+        console.error('❌ HLS error in ProfessionalVideoPlayer:', data);
+        setIsBuffering(false);
+        if (data.fatal) {
+          switch (data.type) {
+            case Hls.ErrorTypes.NETWORK_ERROR:
+              console.error('Fatal network error, trying to recover', data);
+              // Try to recover
+              setTimeout(() => {
+                if (hlsRef.current) {
+                  hlsRef.current.startLoad();
+                }
+              }, 1000);
+              break;
+            case Hls.ErrorTypes.MEDIA_ERROR:
+              console.error('Fatal media error, trying to recover');
+              hls.recoverMediaError();
+              break;
+            default:
+              console.error('Fatal error, cannot recover');
+              hls.destroy();
+              break;
+          }
+        }
+      });
+
+    } else if (videoElement.canPlayType('application/vnd.apple.mpegurl')) {
+      // Native HLS support (Safari, iOS)
+      console.log('✅ Using native HLS support in ProfessionalVideoPlayer');
+      videoElement.src = hlsUrl;
+    } else {
+      console.error('❌ HLS not supported in this browser');
+    }
+
+    // Cleanup
+    return () => {
+      if (hlsRef.current) {
+        hlsRef.current.destroy();
+        hlsRef.current = null;
+      }
+    };
+  }, [video, autoPlay]);
+
+  // Get HLS video URL from video object
   const getVideoUrl = () => {
-    const baseUrl = process.env.REACT_APP_API_URL || 'http://localhost:5001';
-    const filename = video.video_path.split('/').pop();
-    return `${baseUrl}/api/videos/stream/${filename}`;
+    return videoService.getVideoPlaybackUrl(video);
   };
 
   return (
@@ -337,7 +420,6 @@ const ProfessionalVideoPlayer: React.FC<ProfessionalVideoPlayerProps> = ({
       <video
         ref={videoRef}
         className="w-full h-full"
-        src={getVideoUrl()}
         autoPlay={autoPlay}
         playsInline
         onLoadedMetadata={handleLoadedMetadata}

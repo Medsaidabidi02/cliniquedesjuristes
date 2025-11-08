@@ -54,7 +54,7 @@ const startServer = async () => {
         console.log(`🚀 Server running on port ${config.port}`);
         console.log(`🌍 Environment: ${config.nodeEnv}`);
         console.log(`📡 API URL: ${config.apiUrl}`);
-        console.log(`📁 Uploads path: ${config.storage.uploadsPath}`);
+        console.log(`🎬 Hetzner HLS enabled: ${config.hetzner.enabled}`);
       });
     }
   } catch (error) {

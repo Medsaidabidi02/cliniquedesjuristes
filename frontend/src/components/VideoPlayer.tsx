@@ -1,4 +1,5 @@
 import React, { useRef, useEffect, useState } from 'react';
+import Hls from 'hls.js';
 import { Video, videoService } from '../lib/videoService';
 
 interface VideoPlayerProps {
@@ -19,60 +20,144 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
   autoPlay = false
 }) => {
   const videoRef = useRef<HTMLVideoElement>(null);
+  const hlsRef = useRef<Hls | null>(null);
   const [error, setError] = useState<string>('');
   const [hasPlayed, setHasPlayed] = useState(false);
   const [isPreviewMode, setIsPreviewMode] = useState(!isAuthenticated);
+  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
     const videoElement = videoRef.current;
     if (!videoElement) return;
 
-    // Security: Disable right-click context menu
+    // Get the HLS URL from the video
+    const hlsUrl = videoService.getVideoPlaybackUrl(video);
+    
+    if (!hlsUrl) {
+      setError('Video URL not available');
+      setIsLoading(false);
+      return;
+    }
+
+    console.log('🎬 Loading HLS video:', hlsUrl);
+
+    // Check if HLS.js is supported
+    if (Hls.isSupported()) {
+      const hls = new Hls({
+        enableWorker: true,
+        lowLatencyMode: false,
+        backBufferLength: 90,
+        xhrSetup: function(xhr, url) {
+          // Set proper CORS headers for cross-origin requests
+          xhr.withCredentials = false;
+        },
+        // Enable debug for troubleshooting
+        debug: false,
+      });
+
+      hlsRef.current = hls;
+
+      // Load the HLS manifest
+      hls.loadSource(hlsUrl);
+      hls.attachMedia(videoElement);
+
+      // Handle HLS events
+      hls.on(Hls.Events.MANIFEST_PARSED, () => {
+        console.log('✅ HLS manifest parsed successfully');
+        setIsLoading(false);
+        if (autoPlay) {
+          videoElement.play().catch(err => {
+            console.warn('⚠️ Autoplay prevented:', err);
+          });
+        }
+      });
+
+      hls.on(Hls.Events.ERROR, (event, data) => {
+        console.error('❌ HLS error:', data);
+        setIsLoading(false);
+        
+        if (data.fatal) {
+          switch (data.type) {
+            case Hls.ErrorTypes.NETWORK_ERROR:
+              console.error('Fatal network error encountered', data);
+              if (data.response?.code === 0) {
+                setError('CORS error: Video server must allow cross-origin requests. Check HETZNER_SETUP.md for CORS configuration.');
+              } else if (data.response?.code === 403) {
+                setError('Access denied: Video file not accessible. Check bucket permissions.');
+              } else if (data.response?.code === 404) {
+                setError('Video not found: Check that video_path in database matches S3 file location.');
+              } else {
+                setError('Network error loading video. Check browser console for details.');
+              }
+              // Try to recover
+              setTimeout(() => {
+                if (hlsRef.current) {
+                  hlsRef.current.startLoad();
+                }
+              }, 1000);
+              break;
+            case Hls.ErrorTypes.MEDIA_ERROR:
+              console.error('Fatal media error encountered, trying to recover');
+              hls.recoverMediaError();
+              setError('Media error. Attempting to recover...');
+              setTimeout(() => setError(''), 2000);
+              break;
+            default:
+              console.error('Fatal error, cannot recover');
+              setError('Error loading video. Please check console for details.');
+              hls.destroy();
+              break;
+          }
+        }
+      });
+
+    } else if (videoElement.canPlayType('application/vnd.apple.mpegurl')) {
+      // Native HLS support (Safari, iOS)
+      console.log('✅ Using native HLS support');
+      videoElement.src = hlsUrl;
+      setIsLoading(false);
+      
+      videoElement.addEventListener('loadedmetadata', () => {
+        console.log('✅ Video metadata loaded');
+        if (autoPlay) {
+          videoElement.play().catch(err => {
+            console.warn('⚠️ Autoplay prevented:', err);
+          });
+        }
+      });
+      
+      videoElement.addEventListener('error', () => {
+        console.error('❌ Native video error');
+        setError('Error loading video. Please try again later.');
+      });
+    } else {
+      setError('HLS not supported in this browser');
+      setIsLoading(false);
+    }
+
+    // Cleanup function
+    return () => {
+      if (hlsRef.current) {
+        hlsRef.current.destroy();
+        hlsRef.current = null;
+      }
+    };
+  }, [video, autoPlay]);
+
+  // Security: Disable right-click context menu
+  useEffect(() => {
+    const videoElement = videoRef.current;
+    if (!videoElement) return;
+
     const handleContextMenu = (e: MouseEvent) => {
       e.preventDefault();
       return false;
     };
 
-    // Security: Disable keyboard shortcuts for downloading/saving
-    const handleKeyDown = (e: KeyboardEvent) => {
-      // Disable Ctrl+S, Ctrl+Shift+I, F12, etc.
-      if (
-        (e.ctrlKey && e.key === 's') ||
-        (e.ctrlKey && e.shiftKey && e.key === 'I') ||
-        e.key === 'F12' ||
-        (e.ctrlKey && e.shiftKey && e.key === 'C') ||
-        (e.ctrlKey && e.key === 'u')
-      ) {
-        e.preventDefault();
-        return false;
-      }
-      return true; // Fixed: Added return value
-    };
-
-    // Security: Disable drag and drop
-    const handleDragStart = (e: DragEvent) => {
-      e.preventDefault();
-      return false;
-    };
-
-    // Security: Disable selection
-    const handleSelectStart = (e: Event) => {
-      e.preventDefault();
-      return false;
-    };
-
-    // Add event listeners
     videoElement.addEventListener('contextmenu', handleContextMenu);
-    videoElement.addEventListener('dragstart', handleDragStart);
-    videoElement.addEventListener('selectstart', handleSelectStart);
-    document.addEventListener('keydown', handleKeyDown);
 
-    // Cleanup
     return () => {
       videoElement.removeEventListener('contextmenu', handleContextMenu);
-      videoElement.removeEventListener('dragstart', handleDragStart);
-      videoElement.removeEventListener('selectstart', handleSelectStart);
-      document.removeEventListener('keydown', handleKeyDown);
     };
   }, []);
 
@@ -98,74 +183,52 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
 
   const handleError = (e: any) => {
     console.error('Video playback error:', e);
-    setError('Error playing video. Please try again.');
-  };
-
-  const getVideoUrl = () => {
-    const streamUrl = videoService.getVideoStreamUrl(video);
-    // Add auth token for authenticated users
-    if (isAuthenticated) {
-      const token = localStorage.getItem('token');
-      if (token) {
-        return `${streamUrl}&auth=${encodeURIComponent(token)}`;
-      }
+    if (!error) {
+      setError('Error playing video. Please try again.');
     }
-    return streamUrl;
   };
 
-  // Fixed: Removed invalid CSS properties
+  // Security styles
   const securityStyles: React.CSSProperties = {
     userSelect: 'none',
     WebkitUserSelect: 'none',
     MozUserSelect: 'none',
     msUserSelect: 'none',
     WebkitTouchCallout: 'none',
-    // Removed: WebkitUserDrag - not a valid CSS property
     KhtmlUserSelect: 'none'
   };
 
   return (
     <div className={`relative w-full ${className}`} style={securityStyles}>
-      {/* Security overlay to prevent interactions */}
-      <div 
-        className="absolute inset-0 z-10 pointer-events-none"
-        style={{ 
-          background: 'transparent',
-          ...securityStyles
-        }}
-        onContextMenu={(e) => e.preventDefault()}
-        onDragStart={(e) => e.preventDefault()}
-      />
-      
+      {/* Loading overlay */}
+      {isLoading && (
+        <div className="absolute inset-0 bg-black bg-opacity-75 flex items-center justify-center z-20">
+          <div className="text-white text-center">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-white mx-auto mb-4"></div>
+            <p>Loading video...</p>
+          </div>
+        </div>
+      )}
+
       <video
         ref={videoRef}
         className="w-full h-full object-cover"
         controls
-        controlsList="nodownload nofullscreen noremoteplaybook"
+        controlsList="nodownload"
         disablePictureInPicture
         onTimeUpdate={handleTimeUpdate}
         onPlay={handlePlay}
         onError={handleError}
         onContextMenu={(e) => e.preventDefault()}
-        onDragStart={(e) => e.preventDefault()}
-        // Fixed: Removed onSelectStart - not a valid video element event
         style={securityStyles}
-        crossOrigin="use-credentials"
+        crossOrigin="anonymous"
         preload="metadata"
-        autoPlay={autoPlay}
         playsInline
-        // Additional security attributes
         draggable={false}
-      >
-        <source 
-          src={getVideoUrl()}
-          type="video/mp4" 
-        />
-        Your browser does not support the video tag.
-      </video>
+      />
 
       {/* Security warning overlay for preview mode */}
-      {isPreviewMode && hasPlayed && (
+      {isPreviewMode && hasPlayed && !error && (
         <div className="absolute bottom-4 left-4 right-4 bg-black bg-opacity-75 text-white p-2 rounded text-sm z-20">
           🔒 Preview mode - Login to watch full video ({maxPreviewTime}s limit)
         </div>
@@ -191,62 +254,10 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({
           </div>
         </div>
       )}
-
-      {/* Anti-screenshot protection CSS - Fixed to use regular style tag */}
-      <style>{`
-        video::before {
-          content: "";
-          position: absolute;
-          top: 0;
-          left: 0;
-          right: 0;
-          bottom: 0;
-          background: transparent;
-          pointer-events: none;
-          z-index: 1;
-        }
-        
-        @media print {
-          video {
-            display: none !important;
-          }
-        }
-        
-        /* Disable text selection on video container */
-        .video-container * {
-          user-select: none !important;
-          -webkit-user-select: none !important;
-          -moz-user-select: none !important;
-          -ms-user-select: none !important;
-        }
-        
-        /* Enhanced security styles */
-        video {
-          -webkit-user-drag: none !important;
-          -khtml-user-drag: none !important;
-          -moz-user-drag: none !important;
-          -o-user-drag: none !important;
-          user-drag: none !important;
-          pointer-events: auto;
-        }
-        
-        /* Disable video element interactions */
-        video::-webkit-media-controls-panel {
-          -webkit-appearance: none;
-        }
-        
-        video::-webkit-media-controls-play-button {
-          -webkit-appearance: none;
-        }
-        
-        video::-webkit-media-controls-start-playback-button {
-          -webkit-appearance: none;
-        }
-      `}</style>
     </div>
   );
 };
 
 export default VideoPlayer;
 
-// Last updated: 2025-08-19 16:12:58 | Azizkh07
+console.log('🎬 VideoPlayer component loaded - HLS.js mode');
