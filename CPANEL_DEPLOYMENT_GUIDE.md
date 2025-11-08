@@ -1,26 +1,149 @@
-# cPanel Deployment Guide for Legal Education Platform
+# Complete cPanel Deployment Guide
+## Full-Stack Web Application on cPanel Version 128.0.21
 
-**Complete guide for deploying this application on cPanel v128.0.21**
+**Official cPanel Documentation Reference:** https://docs.cpanel.net/cpanel/
 
-This guide assumes you're starting fresh or performing a complete redeployment. It covers both Node.js backend + React frontend setup with Hetzner S3 video storage.
+This is a **single, complete, reliable redeployment guide** that works on the first attempt. The backend **MUST** stay inside `public_html` and cannot be placed outside or in a separate application.
 
 ---
 
 ## 📋 Table of Contents
 
-1. [Project Preparation](#1-project-preparation)
-2. [Cleaning Existing Deployment](#2-cleaning-existing-deployment)
-3. [Uploading New Version](#3-uploading-new-version)
-4. [Configuring the Application](#4-configuring-the-application)
-5. [Dependencies & Runtime](#5-dependencies--runtime)
-6. [Database Migration](#6-database-migration)
-7. [Testing & Verification](#7-testing--verification)
-8. [Troubleshooting](#8-troubleshooting)
-9. [Post-Deployment Checklist](#9-post-deployment-checklist)
+1. [Important Prerequisites](#1-important-prerequisites)
+2. [Step A: Delete Old Broken Deployment](#2-step-a-delete-old-broken-deployment)
+3. [Step B: Upload New Version](#3-step-b-upload-new-version)
+4. [Step C: Configure the Application](#4-step-c-configure-the-application)
+5. [Step D: Node.js/PHP/Python Backend Configuration](#5-step-d-nodejsphppython-backend-configuration)
+6. [Step E: Database Configuration](#6-step-e-database-configuration)
+7. [Step F: Test the Deployment](#7-step-f-test-the-deployment)
+8. [Complete Working Example](#8-complete-working-example)
+9. [Troubleshooting Guide](#9-troubleshooting-guide)
 
 ---
 
-## 1. Project Preparation
+## ⚠️ CRITICAL DEPLOYMENT RULES
+
+**READ THESE RULES BEFORE PROCEEDING:**
+
+1. ✅ Backend **MUST** stay inside `public_html/backend/` or directly in `public_html/`
+2. ❌ Backend **CANNOT** be separated from `public_html`
+3. ✅ Use the folder structure **exactly** as uploaded - do NOT rename or restructure
+4. ✅ All instructions are based on **cPanel version 128.0.21** features only
+5. ✅ This guide assumes you upload a single ZIP containing both frontend and backend
+
+---
+
+## 1. Important Prerequisites
+
+### 1.1 What You Need Before Starting
+
+Before proceeding, ensure you have:
+
+1. **Access to cPanel 128.0.21**
+   - URL: `https://yourdomain.com:2083` or `https://yourserver.com:2083`
+   - Username and password from your hosting provider
+
+2. **Your Project Files Ready**
+   - Complete project ZIP file containing both frontend and backend
+   - OR separate frontend and backend folders ready to zip
+
+3. **Database Credentials** (from cPanel MySQL Database tool)
+   - Database name
+   - Database username
+   - Database password
+
+4. **Environment Configuration Values**
+   - JWT secret key
+   - API keys (Hetzner S3, etc.)
+   - Production URLs
+
+5. **SSH Access** (optional but recommended)
+   - For running npm commands
+   - Check with hosting provider if available
+
+### 1.2 Understanding Your Deployment Structure
+
+**REQUIRED STRUCTURE** - Backend stays inside public_html:
+
+```
+public_html/
+├── index.html                 # Frontend entry point
+├── static/                    # Frontend assets (React/Vue build)
+│   ├── css/
+│   ├── js/
+│   └── media/
+├── backend/                   # Backend application (Node.js/PHP/Python)
+│   ├── src/
+│   ├── package.json          # For Node.js
+│   ├── .env                  # Environment variables (will create this)
+│   └── node_modules/         # Dependencies (will install)
+├── .htaccess                  # Routing configuration
+└── manifest.json              # Frontend manifest (if applicable)
+```
+
+**ALTERNATIVE STRUCTURE** - Backend directly in public_html:
+
+```
+public_html/
+├── index.html                 # Frontend entry point
+├── static/                    # Frontend assets
+├── src/                       # Backend source code (directly here)
+├── package.json               # Backend package.json
+├── .env                       # Backend environment
+├── api/                       # API routes folder
+├── .htaccess                  # Routing for both frontend and backend
+└── manifest.json
+```
+
+### 1.3 Prepare Your ZIP File Locally
+
+**Option 1: Create Complete Deployment Package**
+
+On your local machine:
+
+```bash
+# Navigate to your project root
+cd /path/to/your/project
+
+# Build frontend
+cd frontend
+npm install
+npm run build
+
+# Go back to root
+cd ..
+
+# Create deployment folder with correct structure
+mkdir -p deployment
+cp -r frontend/build/* deployment/
+mkdir -p deployment/backend
+cp -r backend/* deployment/backend/
+
+# Create ZIP
+cd deployment
+zip -r ../complete-deployment.zip .
+cd ..
+
+# You now have: complete-deployment.zip
+```
+
+**Option 2: Separate Packages (Then Merge on Server)**
+
+```bash
+# Package frontend build
+cd frontend/build
+zip -r ../../frontend.zip .
+cd ../..
+
+# Package backend
+zip -r backend.zip backend/
+
+# Upload both, then extract to correct locations
+```
+
+---
+
+## 2. Step A: Delete Old Broken Deployment
 
 ### 1.1 Prepare Your Local Environment
 
