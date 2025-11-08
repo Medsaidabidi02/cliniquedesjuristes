@@ -1,0 +1,197 @@
+# ========================================================================
+# .htaccess Configuration for Clinique des Juristes
+# cPanel Deployment with Passenger + React Frontend
+# ========================================================================
+
+# DO NOT REMOVE. CLOUDLINUX PASSENGER CONFIGURATION BEGIN
+# Configure Passenger to run Node.js backend
+PassengerAppRoot "/home/c2668909c/public_html/backend"
+PassengerBaseURI "/"
+PassengerNodejs "/home/c2668909c/nodevenv/public_html/backend/18/bin/node"
+PassengerAppType node
+PassengerStartupFile dist/server.js
+PassengerEnabled on
+# DO NOT REMOVE. CLOUDLINUX PASSENGER CONFIGURATION END
+
+# ========================================================================
+# Enable Rewrite Engine
+# ========================================================================
+RewriteEngine On
+RewriteBase /
+
+# ========================================================================
+# Force HTTPS (Redirect HTTP to HTTPS)
+# Uncomment if you have SSL certificate installed
+# ========================================================================
+# RewriteCond %{HTTPS} off
+# RewriteRule ^(.*)$ https://%{HTTP_HOST}%{REQUEST_URI} [L,R=301]
+
+# ========================================================================
+# Environment Variables for Backend
+# Note: These are used by Passenger when starting the Node.js app
+# ========================================================================
+<IfModule Litespeed>
+# Server Configuration
+SetEnv NODE_ENV production
+SetEnv PORT 3000
+
+# URLs - Update with your actual domain
+SetEnv API_URL https://cliniquedesjuristes.com
+SetEnv BASE_URL https://cliniquedesjuristes.com
+SetEnv FRONTEND_URL https://cliniquedesjuristes.com
+
+# Database - UPDATE THESE WITH YOUR CREDENTIALS
+SetEnv DATABASE_URL mysql://c2668909c_clinique_user:YOUR_PASSWORD_HERE@localhost:3306/c2668909c_clinique_db
+
+# Security Secrets
+SetEnv JWT_SECRET legal-education-platform-super-secret-key-medsaidabidi02-2025-mysql5-version-production
+SetEnv VIDEO_SECRET legal-education-platform-super-secret-key-medsaidabidi02-2025-mysql5-version-production
+SetEnv JWT_EXPIRES_IN 24h
+
+# File Upload
+SetEnv MAX_FILE_SIZE 5120
+SetEnv UPLOAD_PATH /home/c2668909c/public_html/backend/uploads
+
+# Admin Credentials
+SetEnv DEFAULT_ADMIN_EMAIL admin@cliniquedesjuristes.com
+SetEnv DEFAULT_ADMIN_PASSWORD admin123
+
+# Hetzner Object Storage (Optional)
+SetEnv ENABLE_HETZNER true
+SetEnv HETZNER_ENDPOINT https://nbg1.your-objectstorage.com
+SetEnv HETZNER_BUCKET cliniquedesjuristes
+
+# HLS Streaming
+SetEnv ENABLE_HLS true
+</IfModule>
+
+# ========================================================================
+# API Routes - Proxy to Passenger/Node.js backend
+# All /api/* requests are handled by the Node.js application
+# ========================================================================
+# Don't rewrite API routes - let Passenger handle them
+RewriteCond %{REQUEST_URI} ^/api/
+RewriteRule .* - [L]
+
+# ========================================================================
+# React Router - Frontend Static Files and Client-Side Routing
+# Serve static files first, then fallback to index.html for React Router
+# ========================================================================
+
+# Don't rewrite files that exist (CSS, JS, images, etc.)
+RewriteCond %{REQUEST_FILENAME} -f
+RewriteRule .* - [L]
+
+# Don't rewrite directories that exist
+RewriteCond %{REQUEST_FILENAME} -d
+RewriteRule .* - [L]
+
+# For all other requests (React Router routes), serve index.html
+# This allows React Router to handle client-side routing
+RewriteRule ^(.*)$ /index.html [L,QSA]
+
+# ========================================================================
+# Security Headers
+# ========================================================================
+<IfModule mod_headers.c>
+    # Prevent clickjacking
+    Header always set X-Frame-Options "SAMEORIGIN"
+    
+    # Prevent MIME type sniffing
+    Header always set X-Content-Type-Options "nosniff"
+    
+    # XSS Protection
+    Header always set X-XSS-Protection "1; mode=block"
+    
+    # Referrer Policy
+    Header always set Referrer-Policy "strict-origin-when-cross-origin"
+    
+    # Allow CORS for API endpoints (if needed)
+    # Adjust origin as needed for your domain
+    Header always set Access-Control-Allow-Origin "https://cliniquedesjuristes.com"
+    Header always set Access-Control-Allow-Methods "GET, POST, PUT, DELETE, OPTIONS, PATCH"
+    Header always set Access-Control-Allow-Headers "Content-Type, Authorization, X-Requested-With, X-Session-Token"
+    Header always set Access-Control-Allow-Credentials "true"
+</IfModule>
+
+# ========================================================================
+# Compression - Improve performance
+# ========================================================================
+<IfModule mod_deflate.c>
+    AddOutputFilterByType DEFLATE text/html text/plain text/xml text/css text/javascript application/javascript application/json
+</IfModule>
+
+# ========================================================================
+# Browser Caching - Improve performance
+# ========================================================================
+<IfModule mod_expires.c>
+    ExpiresActive On
+    
+    # Images
+    ExpiresByType image/jpeg "access plus 1 year"
+    ExpiresByType image/png "access plus 1 year"
+    ExpiresByType image/gif "access plus 1 year"
+    ExpiresByType image/svg+xml "access plus 1 year"
+    ExpiresByType image/webp "access plus 1 year"
+    ExpiresByType image/x-icon "access plus 1 year"
+    
+    # CSS and JavaScript
+    ExpiresByType text/css "access plus 1 month"
+    ExpiresByType application/javascript "access plus 1 month"
+    ExpiresByType text/javascript "access plus 1 month"
+    
+    # Fonts
+    ExpiresByType font/woff "access plus 1 year"
+    ExpiresByType font/woff2 "access plus 1 year"
+    ExpiresByType application/font-woff "access plus 1 year"
+    ExpiresByType application/font-woff2 "access plus 1 year"
+    
+    # HTML (no caching for HTML to ensure updates are seen)
+    ExpiresByType text/html "access plus 0 seconds"
+</IfModule>
+
+# ========================================================================
+# File Upload Size Limits
+# ========================================================================
+<IfModule mod_php.c>
+    php_value upload_max_filesize 50M
+    php_value post_max_size 50M
+    php_value max_execution_time 300
+    php_value max_input_time 300
+</IfModule>
+
+# ========================================================================
+# Deny Access to Sensitive Files
+# ========================================================================
+<FilesMatch "^\.">
+    Order allow,deny
+    Deny from all
+</FilesMatch>
+
+<FilesMatch "\.(env|log|sql)$">
+    Order allow,deny
+    Deny from all
+</FilesMatch>
+
+# ========================================================================
+# Custom Error Pages (Optional)
+# ========================================================================
+# ErrorDocument 404 /index.html
+# ErrorDocument 500 /index.html
+
+# ========================================================================
+# Prevent Directory Browsing
+# ========================================================================
+Options -Indexes
+
+# ========================================================================
+# Notes for Deployment
+# ========================================================================
+# 1. Update all instances of 'c2668909c' with your actual cPanel username
+# 2. Update 'YOUR_PASSWORD_HERE' with your actual database password
+# 3. Update 'cliniquedesjuristes.com' with your actual domain
+# 4. Update Node.js path to match your cPanel setup
+# 5. Ensure frontend build files are in the same directory as this .htaccess
+# 6. Ensure backend code is in the 'backend' subdirectory
+# 7. Test thoroughly after deployment
+# ========================================================================

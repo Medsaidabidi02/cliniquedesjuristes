@@ -16,3 +16,7 @@ build/
 # OS/system files
 .DS_Store
 Thumbs.db
+
+# Deployment artifacts
+cpanel-deployment/
+clinique-deployment-*.zip
