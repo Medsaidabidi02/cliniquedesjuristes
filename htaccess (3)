@@ -1,0 +1,31 @@
+# DO NOT REMOVE. CLOUDLINUX PASSENGER CONFIGURATION BEGIN
+PassengerAppRoot "/home/c2668909c/public_html/backend"
+PassengerBaseURI "/"
+PassengerNodejs "/home/c2668909c/nodevenv/public_html/backend/18/bin/node"
+PassengerAppType node
+PassengerStartupFile dist/server.js
+# DO NOT REMOVE. CLOUDLINUX PASSENGER CONFIGURATION END
+RewriteEngine On
+# React frontend - serve static files first, then fallback to index.html
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteCond %{REQUEST_URI} !^/api/
+RewriteRule . /index.html [L]
+<IfModule Litespeed>
+SetEnv API_URL https://cliniquedesjuristes.com
+SetEnv BASE_URL https://cliniquedesjuristes.com
+SetEnv DATABASE_URL mysql://c2668909c_clinique_user:bKM8P%7DZPWhH%2B%7B%29Fg@localhost:3306/c2668909c_clinique_db
+SetEnv DEFAULT_ADMIN_EMAIL admin@cliniquedesjuristes.com
+SetEnv DEFAULT_ADMIN_PASSWORD admin123
+SetEnv FRONTEND_URL https://cliniquedesjuristes.com
+SetEnv JWT_EXPIRES_IN 24h
+SetEnv JWT_SECRET legal-education-platform-super-secret-key-medsaidabidi02-2025-mysql5-version-production
+SetEnv MAX_FILE_SIZE 5120
+SetEnv NODE_ENV production
+SetEnv PORT 3000
+SetEnv UPLOAD_PATH ./uploads
+SetEnv VIDEO_SECRET legal-education-platform-super-secret-key-medsaidabidi02-2025-mysql5-version-production
+SetEnv ENABLE_HETZNER true
+SetEnv HETZNER_ENDPOINT https://nbg1.your-objectstorage.com
+SetEnv HETZNER_BUCKET cliniquedesjuristes
+</IfModule>
