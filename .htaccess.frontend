@@ -1,0 +1,93 @@
+# Frontend .htaccess for React Router + Backend API Routing
+# DEPLOYMENT LOCATION: /home/c2668909c/public_html/.htaccess
+# This file goes in the ROOT of public_html (where your React build files are)
+
+# Enable Rewrite Engine
+RewriteEngine On
+
+# Force HTTPS (recommended for production)
+RewriteCond %{HTTPS} off
+RewriteCond %{HTTP_HOST} ^(www\.)?cliniquedesjuristes\.com$ [NC]
+RewriteRule ^(.*)$ https://cliniquedesjuristes.com/$1 [R=301,L]
+
+# CRITICAL: Don't redirect API calls - let them pass through to backend
+# This ensures /api/* requests are handled by the Node.js app in public_html/api/
+RewriteCond %{REQUEST_URI} ^/api/ [NC]
+RewriteRule ^api/(.*)$ /api/$1 [L,QSA]
+
+# React Router: Serve static files first
+# If the requested file exists, serve it directly
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+
+# Exclude API paths from React Router fallback
+RewriteCond %{REQUEST_URI} !^/api/
+
+# Send all other requests to React's index.html (for client-side routing)
+RewriteRule . /index.html [L]
+
+# CORS Headers (helps prevent 403 errors)
+<IfModule mod_headers.c>
+    # Security headers
+    Header always set X-Content-Type-Options "nosniff"
+    Header always set X-Frame-Options "SAMEORIGIN"
+    Header always set X-XSS-Protection "1; mode=block"
+    
+    # Allow API communication from same origin
+    Header always set Access-Control-Allow-Origin "https://cliniquedesjuristes.com"
+    Header always set Access-Control-Allow-Credentials "true"
+</IfModule>
+
+# Cache control for static assets (improves performance)
+<IfModule mod_expires.c>
+    ExpiresActive On
+    
+    # Images - cache for 1 year
+    ExpiresByType image/jpg "access plus 1 year"
+    ExpiresByType image/jpeg "access plus 1 year"
+    ExpiresByType image/png "access plus 1 year"
+    ExpiresByType image/gif "access plus 1 year"
+    ExpiresByType image/svg+xml "access plus 1 year"
+    ExpiresByType image/x-icon "access plus 1 year"
+    ExpiresByType image/webp "access plus 1 year"
+    
+    # CSS and JavaScript - cache for 1 month
+    ExpiresByType text/css "access plus 1 month"
+    ExpiresByType application/javascript "access plus 1 month"
+    ExpiresByType text/javascript "access plus 1 month"
+    
+    # Fonts - cache for 1 year
+    ExpiresByType font/woff "access plus 1 year"
+    ExpiresByType font/woff2 "access plus 1 year"
+    ExpiresByType application/font-woff "access plus 1 year"
+    ExpiresByType application/font-woff2 "access plus 1 year"
+    
+    # HTML - no cache (always fresh)
+    ExpiresByType text/html "access plus 0 seconds"
+    
+    # JSON - no cache
+    ExpiresByType application/json "access plus 0 seconds"
+</IfModule>
+
+# Gzip Compression (reduces bandwidth and improves speed)
+<IfModule mod_deflate.c>
+    AddOutputFilterByType DEFLATE text/html
+    AddOutputFilterByType DEFLATE text/plain
+    AddOutputFilterByType DEFLATE text/xml
+    AddOutputFilterByType DEFLATE text/css
+    AddOutputFilterByType DEFLATE application/javascript
+    AddOutputFilterByType DEFLATE application/json
+    AddOutputFilterByType DEFLATE image/svg+xml
+</IfModule>
+
+# Prevent access to hidden files (security)
+<FilesMatch "^\.">
+    Order allow,deny
+    Deny from all
+</FilesMatch>
+
+# Prevent access to .env files (security)
+<FilesMatch "^\.env">
+    Order allow,deny
+    Deny from all
+</FilesMatch>

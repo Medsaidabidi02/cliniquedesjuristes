@@ -1,24 +1,19 @@
-# ============================================================================
-# BACKEND API .htaccess - For cPanel Deployment
-# ============================================================================
+# Backend API .htaccess for cPanel Passenger (Node.js)
 # DEPLOYMENT LOCATION: /home/c2668909c/public_html/api/.htaccess
-# 
-# NOTE: This file was previously named 'htaccess' in the repo.
-#       Copy this to /home/c2668909c/public_html/api/.htaccess on your server
-#
-# See also:
-#   - .htaccess.backend (same content, better named)
-#   - .htaccess.frontend (for public_html root)
-#   - CPANEL_DEPLOYMENT_GUIDE.md (full instructions)
-# ============================================================================
+# This file goes in the API subdirectory where your Node.js backend is located
 
-# DO NOT REMOVE - CloudLinux Passenger Configuration
+# ============================================================================
+# CloudLinux Passenger Configuration for Node.js
+# DO NOT REMOVE - Required for Node.js to run on cPanel
+# ============================================================================
 PassengerAppRoot "/home/c2668909c/public_html/api"
 PassengerBaseURI "/api"
 PassengerNodejs "/home/c2668909c/nodevenv/public_html/api/18/bin/node"
 PassengerAppType node
 PassengerStartupFile dist/server.js
 PassengerAppStart dist/server.js
+
+# Enable Passenger
 PassengerEnabled on
 
 # Passenger performance tuning
@@ -29,42 +24,54 @@ PassengerMaxRequests 1000
 
 # ============================================================================
 # Environment Variables
+# IMPORTANT: Update these if you change credentials or domain
 # ============================================================================
+
+# Node.js Environment
 SetEnv NODE_ENV production
 SetEnv PORT 3000
 
-# Database Configuration (port 3306 for cPanel)
+# Database Configuration
+# CRITICAL: Use port 3306 on cPanel (not 3307 which is for local dev)
 SetEnv DATABASE_URL mysql://c2668909c_clinique_user:bKM8P}ZPWhH+{)Fg@localhost:3306/c2668909c_clinique_db
 
-# Security
+# Security - JWT & Encryption
 SetEnv JWT_SECRET legal-education-platform-super-secret-key-medsaidabidi02-2025-mysql5-version-production
 SetEnv VIDEO_SECRET legal-education-platform-super-secret-key-medsaidabidi02-2025-mysql5-version-production
 SetEnv JWT_EXPIRES_IN 24h
 
-# File Upload
+# File Upload Configuration
 SetEnv MAX_FILE_SIZE 5120
 SetEnv UPLOAD_PATH ./uploads
 
-# URLs (HTTPS, no ports)
+# Application URLs
+# CRITICAL: Must be HTTPS and WITHOUT port numbers in production
+# Frontend and API URLs should both point to your main domain
 SetEnv FRONTEND_URL https://cliniquedesjuristes.com
 SetEnv API_URL https://cliniquedesjuristes.com
 SetEnv BASE_URL https://cliniquedesjuristes.com
 
-# Admin Credentials
+# Default Admin Credentials
+# SECURITY: Change these after first login!
 SetEnv DEFAULT_ADMIN_EMAIL admin@cliniquedesjuristes.com
 SetEnv DEFAULT_ADMIN_PASSWORD admin123
 
-# Hetzner Object Storage
+# Hetzner Object Storage (S3-compatible)
+# Enable this for cloud video storage
 SetEnv ENABLE_HETZNER true
 SetEnv HETZNER_ENDPOINT https://nbg1.your-objectstorage.com
 SetEnv HETZNER_BUCKET cliniquedesjuristes
+
+# HLS Streaming
 SetEnv ENABLE_HLS true
 
 # ============================================================================
-# CORS Headers - CRITICAL for fixing 403 errors
+# CORS Headers Configuration
+# CRITICAL: This fixes 403 Forbidden errors
 # ============================================================================
 <IfModule mod_headers.c>
     # Allow requests from your domain
+    # Update this if you use www subdomain or multiple domains
     Header always set Access-Control-Allow-Origin "https://cliniquedesjuristes.com"
     
     # Allow these HTTP methods
@@ -80,6 +87,7 @@ SetEnv ENABLE_HLS true
     Header always set Access-Control-Expose-Headers "Content-Range, X-Total-Count"
     
     # Handle preflight OPTIONS requests
+    # This is critical for CORS to work properly
     RewriteEngine On
     RewriteCond %{REQUEST_METHOD} OPTIONS
     RewriteRule ^(.*)$ $1 [R=204,L]
@@ -87,25 +95,43 @@ SetEnv ENABLE_HLS true
 
 # ============================================================================
 # Request Timeout Configuration
+# Increase timeouts for video uploads and processing
 # ============================================================================
 <IfModule mod_fcgid.c>
     FcgidIOTimeout 300
     FcgidConnectTimeout 300
 </IfModule>
 
+# Request timeout (5 minutes for large uploads)
 Timeout 300
 
-# File upload size limit (5GB)
+# File upload size limit (5GB = 5368709120 bytes)
+# Adjust this based on your hosting plan limits
 LimitRequestBody 5368709120
 
 # ============================================================================
 # Cache Control for API Responses
+# Prevents caching of dynamic API data
 # ============================================================================
 <FilesMatch "\.(json)$">
     Header set Cache-Control "no-cache, no-store, must-revalidate"
     Header set Pragma "no-cache"
     Header set Expires 0
 </FilesMatch>
+
+# No caching for API endpoints
+<IfModule mod_headers.c>
+    Header set Cache-Control "no-cache, no-store, must-revalidate"
+    Header set Pragma "no-cache"
+    Header set Expires 0
+</IfModule>
+
+# ============================================================================
+# Error Pages (optional)
+# ============================================================================
+# Uncomment to customize error pages
+# ErrorDocument 404 /404.html
+# ErrorDocument 500 /500.html
 
 # ============================================================================
 # Security - Prevent access to sensitive files
@@ -125,15 +151,44 @@ LimitRequestBody 5368709120
     Deny from all
 </FilesMatch>
 
+# Protect package.json from direct access
 <FilesMatch "package\.json$">
     Order allow,deny
     Deny from all
 </FilesMatch>
 
+# ============================================================================
+# PHP Execution (Disable for Node.js directory)
+# ============================================================================
+# Prevent PHP execution in this directory (security)
 <FilesMatch "\.php$">
     Order allow,deny
     Deny from all
 </FilesMatch>
 
-# Disable directory listing
+# ============================================================================
+# Directory Listing (Disable for security)
+# ============================================================================
 Options -Indexes
+
+# ============================================================================
+# IMPORTANT NOTES FOR DEPLOYMENT
+# ============================================================================
+# 1. Update PassengerNodejs path if your Node.js version differs
+#    Check actual path: /home/c2668909c/nodevenv/public_html/api/[VERSION]/bin/node
+#
+# 2. Verify PassengerAppRoot matches your actual directory structure
+#
+# 3. Ensure dist/server.js exists (run: npm run build)
+#
+# 4. Update Access-Control-Allow-Origin if using www subdomain:
+#    Header always set Access-Control-Allow-Origin "https://www.cliniquedesjuristes.com"
+#    Or use wildcard (less secure):
+#    Header always set Access-Control-Allow-Origin "*"
+#
+# 5. After any changes to this file, restart the Node.js app in cPanel
+#
+# 6. Check logs if issues occur:
+#    - /home/c2668909c/logs/error_log
+#    - cPanel → Node.js Apps → View Logs
+# ============================================================================
