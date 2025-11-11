@@ -44,6 +44,7 @@ export class ApiClient {
         ...headers,
         'Content-Type': 'application/json',
       },
+      credentials: 'include', // Required for CORS with credentials
     });
 
     console.log('📡 GET response status:', response.status);
@@ -65,6 +66,7 @@ export class ApiClient {
         method: 'POST',
         headers,
         body: data,
+        credentials: 'include', // Required for CORS with credentials
       });
       
       console.log('📡 POST FormData response status:', response.status);
@@ -79,6 +81,7 @@ export class ApiClient {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify(data),
+      credentials: 'include', // Required for CORS with credentials
     });
 
     console.log('📡 POST JSON response status:', response.status);
@@ -99,6 +102,7 @@ export class ApiClient {
         method: 'PUT',
         headers,
         body: data,
+        credentials: 'include', // Required for CORS with credentials
       });
       
       console.log('📡 PUT FormData response status:', response.status);
@@ -113,6 +117,7 @@ export class ApiClient {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify(data),
+      credentials: 'include', // Required for CORS with credentials
     });
 
     console.log('📡 PUT JSON response status:', response.status);
@@ -132,6 +137,7 @@ export class ApiClient {
         ...headers,
         'Content-Type': 'application/json',
       },
+      credentials: 'include', // Required for CORS with credentials
     });
 
     console.log('📡 DELETE response status:', response.status);
