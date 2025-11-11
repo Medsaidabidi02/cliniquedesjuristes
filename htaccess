@@ -13,12 +13,12 @@
 # ============================================================================
 
 # DO NOT REMOVE - CloudLinux Passenger Configuration
+# IMPORTANT: Your dist/server.js MUST export the Express app as default export
 PassengerAppRoot "/home/c2668909c/public_html/api"
 PassengerBaseURI "/api"
 PassengerNodejs "/home/c2668909c/nodevenv/public_html/api/18/bin/node"
 PassengerAppType node
 PassengerStartupFile dist/server.js
-PassengerAppStart dist/server.js
 PassengerEnabled on
 
 # Passenger performance tuning

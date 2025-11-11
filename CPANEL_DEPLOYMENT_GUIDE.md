@@ -578,6 +578,115 @@ curl https://cliniquedesjuristes.com/api/health
 # Should return: {"status":"OK","message":"..."}
 ```
 
+### Issue 2.5: API Hangs / No Response (curl hangs indefinitely)
+
+**Symptoms:**
+- `curl https://cliniquedesjuristes.com/api/health` hangs and never returns
+- No response from API endpoints at all
+- Have to press Ctrl+C to cancel the request
+
+**Root Causes:**
+This happens when Passenger cannot properly load or execute your Node.js application.
+
+**Solutions:**
+
+**1. ✅ CRITICAL: Ensure dist/server.js exports the Express app**
+
+Your backend `src/server.ts` MUST export the Express app for Passenger:
+
+```typescript
+// At the end of src/server.ts
+startServer();
+
+// Export app for Passenger (cPanel)
+export default app;
+```
+
+After adding this, rebuild:
+```bash
+cd backend
+npm run build
+# Re-upload dist/ folder to cPanel
+```
+
+**2. ✅ Check for duplicate Passenger directives in .htaccess**
+
+Your `.htaccess` should have each Passenger directive ONLY ONCE:
+```apache
+# WRONG - duplicates will cause issues
+PassengerAppRoot "/home/c2668909c/public_html/api"
+PassengerAppRoot "/home/c2668909c/public_html/api"  # DUPLICATE!
+
+# RIGHT - each directive appears once
+PassengerAppRoot "/home/c2668909c/public_html/api"
+PassengerBaseURI "/api"
+PassengerNodejs "/home/c2668909c/nodevenv/public_html/api/20/bin/node"
+PassengerAppType node
+PassengerStartupFile dist/server.js
+PassengerEnabled on
+```
+
+**3. ✅ Verify Node.js version in .htaccess matches your cPanel setup**
+
+Check your actual Node.js version path:
+```bash
+# In cPanel → Setup Node.js App
+# Look for: Node.js version: 20.x
+# Then update .htaccess to match:
+PassengerNodejs "/home/c2668909c/nodevenv/public_html/api/20/bin/node"
+# Notice the "20" - must match your version!
+```
+
+**4. ✅ Ensure dependencies are installed**
+```bash
+cd /home/c2668909c/public_html/api
+npm install --production
+```
+
+**5. ✅ Check if tmp/ directory exists for restart**
+```bash
+mkdir -p /home/c2668909c/public_html/api/tmp
+touch /home/c2668909c/public_html/api/tmp/restart.txt
+```
+
+**6. ✅ Test if Node.js can run your app directly**
+```bash
+cd /home/c2668909c/public_html/api
+node dist/server.js
+# Should show startup messages
+# Press Ctrl+C to stop
+```
+
+If this works, Passenger configuration is the issue. If this fails, check your code.
+
+**7. ✅ Check Apache error logs (may be in different location)**
+```bash
+# Try these locations:
+tail -50 ~/logs/error_log
+tail -50 /usr/local/apache/logs/error_log
+tail -50 /var/log/apache2/error.log
+
+# Or ask hosting support where error logs are located
+```
+
+**8. ✅ Restart Passenger after ANY .htaccess change**
+```bash
+# Method 1: Touch restart file
+touch /home/c2668909c/public_html/api/tmp/restart.txt
+
+# Method 2: Via cPanel
+# Go to: Setup Node.js App → Click "Restart"
+```
+
+**Quick Fix Checklist:**
+- [ ] Backend exports app: `export default app;` at end of server.ts
+- [ ] Rebuilt backend: `npm run build`
+- [ ] Re-uploaded dist/ folder to server
+- [ ] No duplicate Passenger directives in .htaccess
+- [ ] Node.js version in .htaccess matches cPanel version
+- [ ] Dependencies installed: `npm install --production`
+- [ ] Restarted Passenger after changes
+
 ### Issue 3: Database Connection Error
 
 **Symptoms:**

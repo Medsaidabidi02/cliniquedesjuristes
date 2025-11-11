@@ -69,3 +69,7 @@ const startServer = async () => {
 // Initialize the server
 startServer();
 
+// Export app for Passenger (cPanel)
+// Passenger requires the app to be exported as module.exports or default export
+export default app;
+
