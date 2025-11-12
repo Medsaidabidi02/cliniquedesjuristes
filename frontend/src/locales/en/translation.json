@@ -1,0 +1,179 @@
+{
+  "site_title": "Clinique des Juristes",
+  "logo_alt": "Clinique des Juristes Logo",
+  "language_switcher": "Language",
+  "nav": {
+    "home": "Home",
+    "courses": "Courses",
+    "articles": "Articles",
+    "contact": "Contact",
+    "dashboard": "Dashboard",
+    "profile": "My Profile",
+    "toggle_menu": "Toggle menu",
+    "main": "Main navigation"
+  },
+  "auth": {
+    "logout": "Logout",
+    "loading": "Loading...",
+    "checking_auth": "Checking authentication...",
+    "checking_admin": "Checking admin rights...",
+    "login": {
+      "welcome_line1": "Welcome",
+      "welcome_line2": "back",
+      "subtitle": "Sign in to access your courses and legal resources",
+      "email_label": "Email address",
+      "email_placeholder": "your.email@example.com",
+      "password_label": "Password",
+      "password_placeholder": "••••••••",
+      "submit": "Sign in",
+      "connecting": "Signing in...",
+      "new_here": "New here?",
+      "no_account": "Don't have an account?",
+      "contact_us": "Contact us",
+      "error_default": "Login failed. Please check your credentials."
+    }
+  },
+  "user": {
+    "administration": "Administration",
+    "logout": "Logout",
+    "default_name": "User",
+    "access_denied": "Access Denied",
+    "no_permission": "You don't have permission to access this page.",
+    "return_home": "Return to Home"
+  },
+  "hero": {
+    "section_label": "Hero",
+    "badge_icon": "⚖️",
+    "badge_text": "Premium Legal Education",
+    "title_part1": "Legal",
+    "title_highlight": "Education",
+    "title_part3": "Modern,",
+    "title_accent": "At Your Fingertips",
+    "title_aria": "Modern legal education at your fingertips",
+    "description": "Clinique des Juristes - All legal disciplines. Modern expert-led courses to help you succeed.",
+    "image_alt": "Graduate"
+  },
+  "buttons": {
+    "cta_more": "Learn more",
+    "contact_us": "Contact us"
+  },
+  "why": {
+    "title": "Why choose Clinique des Juristes"
+  },
+  "features": {
+    "title1": "Structured, clear content",
+    "desc1": "Teaching modules organized by legal experts",
+    "title2": "Learn at your own pace",
+    "desc2": "Unlimited access, courses available 24/7",
+    "title3": "Exam-focused & success-driven",
+    "desc3": "Intensive prep for written and oral exams"
+  },
+  "courses": {
+    "title": "Our Courses",
+    "subtitle": "Significantly improve your skills with our up-to-date instructor-led courses.",
+    "page_title": "Our Courses",
+    "loading": "Loading courses...",
+    "error_title": "Loading error",
+    "choose_count": "Choose from {{count}} courses to boost your career",
+    "category_all": "All courses",
+    "no_courses_title": "No courses available",
+    "no_courses_message_all": "Our courses are coming soon. Please check back later.",
+    "no_courses_message_category": "No courses available in the \"{{category}}\" category.",
+    "login_required_message": "Please log in to watch the full video",
+    "alert_not_enrolled": "You are not enrolled in this course. Contact admin to request access.",
+    "alert_subject_restricted": "You don't have access to this subject. Contact admin to request access.",
+    "instructor_placeholder": "Instructor",
+    "total_hours": "{{count}} hours total",
+    "word_videos": "videos",
+    "word_videos_short": "videos",
+    "all_levels": "All levels",
+    "enrolled": "Enrolled ✓",
+    "login_required": "Login required 🔒",
+    "view_content": "View content",
+    "hide": "Hide",
+    "view_course": "View course",
+    "badge_new": "New",
+    "untitled": "Course",
+    "description_placeholder": "Description will be available soon.",
+    "view_all": "View All",
+    "empty_title": "Our courses are coming soon!"
+  },
+  "articles": {
+    "title": "Latest articles",
+    "subtitle": "Discover our tips, legal news and learning resources.",
+    "empty_title": "Our articles are coming soon!",
+    "untitled": "Article",
+    "excerpt_placeholder": "Article excerpt will appear here.",
+    "view_all": "View All"
+  },
+  "blog": {
+    "hero_section": "Blog",
+    "hero_badge": "News & Legal Advice",
+    "hero_title_prefix": "Latest",
+    "hero_title_highlight": "Articles",
+    "hero_description": "Discover expert tips, legal news and learning resources to stay up-to-date with the latest legal developments.",
+    "read_more": "Read more",
+    "unavailable": "Article unavailable",
+    "empty_text": "Our articles are coming soon! Check back later for legal content.",
+    "error_loading": "Failed to load blog posts. Please try again later.",
+    "detail_invalid_url": "Invalid blog URL",
+    "error_unauthorized": "Unauthorized (401) — blog API requires authentication. Check token/session.",
+    "detail_not_found": "Article not found or inaccessible (404 / permissions).",
+    "detail_load_failed": "Failed to load blog post: {{msg}}",
+    "detail_unavailable_title": "Article unavailable",
+    "detail_unavailable_message": "Article not available",
+    "back_to_list": "Back to articles",
+    "author_alt": "Author",
+    "author_default": "Clinique des Juristes"
+  },
+  "contact": {
+    "hero_title": "Contact Us",
+    "hero_description": "Our team is here to support your legal learning journey. Don't hesitate to ask us anything.",
+    "info_title": "Contact information",
+    "method_email": {
+      "title": "Email",
+      "desc": "Send us a message"
+    },
+    "method_phone": {
+      "title": "Phone",
+      "desc": "Call us directly"
+    },
+    "method_address": {
+      "title": "Address",
+      "desc": "Visit our offices",
+      "detail": "Tunis, Tunisia"
+    },
+    "method_hours": {
+      "title": "Opening hours",
+      "desc": "Our availability hours",
+      "detail": "Mon-Fri: 9am-6pm<br/>Sat: 9am-1pm"
+    },
+    "form_heading": "Contact form",
+    "form": {
+      "name_label": "Full name",
+      "name_placeholder": "Your full name",
+      "email_label": "Email address",
+      "email_placeholder": "your@email.com",
+      "subject_label": "Subject",
+      "subject_placeholder": "Select a subject",
+      "subjects": {
+        "general": "General question",
+        "tech": "Technical support",
+        "course": "Course suggestion",
+        "partnership": "Partnership opportunity",
+        "other": "Other"
+      },
+      "message_label": "Your message",
+      "message_placeholder": "Describe your request in detail...",
+      "sending": "Sending...",
+      "submit": "Send message"
+    },
+    "success_title": "Message sent!",
+    "success_message": "Thank you for your message. Our team will reply as soon as possible.",
+    "success_send_another": "Send another message",
+    "error_generic": "Failed to send message. Please try again later."
+  },
+  "homepage": {
+    "error_loading": "Failed to load content. Please try again later."
+  }
+}

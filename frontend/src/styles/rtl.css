@@ -1,0 +1,70 @@
+/* styles/rtl.css */
+
+/* Base styles */
+[dir="rtl"] {
+    text-align: right;
+  }
+  
+  [dir="ltr"] {
+    text-align: left;
+  }
+  
+  /* Navigation styles */
+  [dir="rtl"] nav ul {
+    flex-direction: row-reverse;
+  }
+  
+  [dir="rtl"] .navigation li {
+    margin-left: 20px;
+    margin-right: 0;
+  }
+  
+  [dir="ltr"] .navigation li {
+    margin-right: 20px;
+    margin-left: 0;
+  }
+  
+  /* Form styles */
+  [dir="rtl"] .form-group {
+    text-align: right;
+  }
+  
+  [dir="rtl"] input, 
+  [dir="rtl"] textarea, 
+  [dir="rtl"] select {
+    text-align: right;
+  }
+  
+  /* Language switcher styles */
+  .language-switcher {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  
+  [dir="rtl"] .language-switcher {
+    flex-direction: row-reverse;
+  }
+  
+  .language-dropdown {
+    padding: 5px 10px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    background: white;
+  }
+  
+  /* Responsive font for Arabic */
+  [dir="rtl"] body {
+    font-family: 'Arial', 'Tahoma', sans-serif;
+  }
+  
+  /* Margin and padding adjustments for RTL */
+  [dir="rtl"] .container {
+    padding-right: 20px;
+    padding-left: 20px;
+  }
+  
+  [dir="rtl"] .text-content {
+    margin-right: 0;
+    margin-left: auto;
+  }
