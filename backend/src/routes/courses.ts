@@ -1,22 +1,10 @@
 import { Router } from 'express';
 import database from '../config/database';
+import { authenticateToken, requireAdmin } from '../middleware/auth';
 
 const router = Router();
 
 console.log('📚 FIXED Courses API loaded for Azizkh07 - 2025-08-20 13:40:09');
-
-// Simple fallback auth middleware
-const simpleAuth = (req: any, res: any, next: any) => {
-  console.log('🔓 Using simple auth bypass for Azizkh07');
-  req.user = { id: 1, name: 'Azizkh07', email: 'admin@cliniquejuriste.com', is_admin: true };
-  next();
-};
-
-// Always use simple auth for now
-const authenticateToken = simpleAuth;
-const isAdmin = simpleAuth;
-
-console.log('✅ Simple auth middleware loaded for courses');
 
 // GET all courses - REAL DATA ONLY
 router.get('/', async (req, res) => {
@@ -102,7 +90,7 @@ router.get('/:id', async (req, res) => {
 });
 
 // POST create new course - REAL DATABASE INSERT
-router.post('/', authenticateToken, isAdmin, async (req, res) => {
+router.post('/', authenticateToken, requireAdmin, async (req, res) => {
   try {
     const { title, description, cover_image, category, is_active } = req.body;
     
@@ -143,7 +131,7 @@ router.post('/', authenticateToken, isAdmin, async (req, res) => {
 });
 
 // PUT update course - REAL DATABASE UPDATE
-router.put('/:id', authenticateToken, isAdmin, async (req, res) => {
+router.put('/:id', authenticateToken, requireAdmin, async (req, res) => {
   try {
     const { id } = req.params;
     const { title, description, cover_image, category, is_active } = req.body;
@@ -193,7 +181,7 @@ router.put('/:id', authenticateToken, isAdmin, async (req, res) => {
 });
 
 // DELETE course - REAL DATABASE DELETE WITH CASCADE
-router.delete('/:id', authenticateToken, isAdmin, async (req, res) => {
+router.delete('/:id', authenticateToken, requireAdmin, async (req, res) => {
   try {
     const { id } = req.params;
     console.log(`🗑️ DELETE /api/courses/${id} - Real database deletion for Azizkh07 at 2025-08-20 13:40:09`);
