@@ -78,7 +78,8 @@ router.post('/login', async (req, res) => {
     }
 
     // ✅ CHECK IF USER IS ALREADY LOGGED IN - Prevent concurrent sessions
-    if (user.is_logged_in) {
+    // Skip this check for admin users to allow them to have multiple sessions
+    if (!user.is_admin && (user.is_logged_in === 1 || user.is_logged_in === true)) {
       console.log('⛔ User already logged in from another device:', user.id);
       return res.status(403).json({
         success: false,
